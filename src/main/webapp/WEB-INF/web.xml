@@ -1,0 +1,50 @@
+<!DOCTYPE web-app PUBLIC
+ "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN"
+ "http://java.sun.com/dtd/web-app_2_3.dtd" >
+
+<web-app>
+  <display-name>Archetype Created Web Application</display-name>
+  <servlet>
+    <servlet-name>Jersey Web Application</servlet-name>
+    <servlet-class>org.glassfish.jersey.servlet.ServletContainer</servlet-class>
+    <init-param>
+      <param-name>jersey.config.server.provider.packages</param-name>
+      <param-value>no.softwarecontrol.idoc.webservices.restapi</param-value>
+     </init-param>
+    <load-on-startup>0</load-on-startup>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>Jersey Web Application</servlet-name>
+    <url-pattern>/iDocWebServices/webresources/*</url-pattern>
+  </servlet-mapping>
+
+  <servlet>
+    <servlet-name>SignupCustomerServlet</servlet-name>
+    <servlet-class>no.softwarecontrol.idoc.web.signup.SignupCustomerServlet</servlet-class>
+    <load-on-startup>0</load-on-startup>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>SignupCustomerServlet</servlet-name>
+    <url-pattern>/iDocWebServices/signup</url-pattern>
+  </servlet-mapping>
+
+  <filter>
+    <filter-name>BasicAuthenticationFilter</filter-name>
+    <filter-class>no.softwarecontrol.idoc.filter.BasicAuthenticationFilter</filter-class>
+    <init-param>
+      <param-name>username</param-name>
+      <param-value>ApplicationUser</param-value>
+    </init-param>
+    <init-param>
+      <param-name>password</param-name>
+      <param-value>Ihadthisthing969906</param-value>
+    </init-param>
+  </filter>
+
+  <filter-mapping>
+    <filter-name>BasicAuthenticationFilter</filter-name>
+    <!--url-pattern>/download</url-pattern-->
+    <!--url-pattern>/iDocWebServices/SendMailServlet</url-pattern-->
+    <url-pattern>/iDocWebServices/webresources/*</url-pattern>
+  </filter-mapping>
+</web-app>

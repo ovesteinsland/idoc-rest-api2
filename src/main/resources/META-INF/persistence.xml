@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<persistence xmlns="https://jakarta.ee/xml/ns/persistence"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="3.0">
+    <persistence-unit name="iDocDatabasePU">
+        <provider>org.eclipse.persistence.jpa.PersistenceProvider</provider>
+        <!--jta-data-source>java:app/jdbc/iDocDatabaseAWS</jta-data-source-->
+        <class>no.softwarecontrol.idoc.data.entityobject.Company</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Asset</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Contract</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Media</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Observation</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Project</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.User</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Role</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Notification</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Equipment</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Location</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Address</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.EquipmentType</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.AssetType</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.AssetGroup</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.UserContact</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.UserRole</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Disipline</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.ProjectGroup</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Conversation</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Message</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Topic</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.QuickChoiceItem</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.QuickChoiceGroup</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Report</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.ReportSection</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Deviation</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.LocationLevel</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.AnswerValue</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.CheckList</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.CheckListAnswer</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.CheckListQuestion</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.CheckListSection</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.ControlInterval</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Measurement</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.MeasurementTrigger</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.ReportParameter</class>
+        <class>no.softwarecontrol.idoc.data.entityhelper.CompanyHasAsset</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.ProjectPrivilege</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Certificate</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.KeyComponent</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.KeyFault</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Tool</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Invoice</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.InvoiceType</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Parameter</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.Integration</class>
+        <class>no.softwarecontrol.idoc.data.entityhelper.WalletProject</class>
+        <class>no.softwarecontrol.idoc.data.entityhelper.WalletCompany</class>
+        <exclude-unlisted-classes>true</exclude-unlisted-classes>
+        <properties>
+            <property name="eclipselink.cache.shared.default" value="false"/>
+            <property name="jakarta.persistence.lock.timeout" value="1000"/>
+            <property name="jakarta.persistence.jdbc.driver" value="org.mariadb.jdbc.Driver"/>
+
+            <property name="jakarta.persistence.jdbc.url" value="jdbc:mariadb://idoc2mai-cluster.cluster-chiyptfbnosz.eu-central-1.rds.amazonaws.com:3306/iDocDatabase"/>
+            <property name="jakarta.persistence.jdbc.user" value="root"/>
+            <property name="jakarta.persistence.jdbc.password" value="Ihadthisthing969906"/>
+            <!-- LOCALHOST passord = SOV13D13no -->
+
+            <property name="eclipselink.connection-pool.default.initial" value="1" />
+            <property name="eclipselink.connection-pool.default.min" value="64" />
+            <property name="eclipselink.connection-pool.default.max" value="64" />
+
+        </properties>
+    </persistence-unit>
+</persistence>
