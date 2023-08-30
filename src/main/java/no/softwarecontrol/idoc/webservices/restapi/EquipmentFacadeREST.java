@@ -12,6 +12,7 @@ import jakarta.persistence.EntityTransaction;
 import jakarta.persistence.Query;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import no.softwarecontrol.idoc.data.entityhelper.WalletProject;
 import no.softwarecontrol.idoc.data.entityobject.*;
 import no.softwarecontrol.idoc.data.requestparams.EquipmentRequestParameters;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
@@ -280,11 +281,20 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
             List<Observation> deviations = observations.stream().filter(r ->
                             r.getDeviation() > 0)
                             .collect(Collectors.toList());
-            if(!observations.isEmpty()) {
-                Collections.sort(observations, Comparator.comparing(Observation::getCreatedDate));
-                Date lastObservationDate = observations.get(observations.size() - 1).getCreatedDate();
-                equipment.setLastObservationDate(lastObservationDate);
+
+            List<Observation> olderObservations = equipment.getObservationList().stream().filter(r ->
+                            r.isDeleted() == false && !r.getProjectId().equalsIgnoreCase(parameters.projectId))
+                    .collect(Collectors.toList());
+            Collections.sort(olderObservations, (Observation o1, Observation o2) -> o2.getCreatedDate().compareTo(o1.getCreatedDate()));
+            if(!olderObservations.isEmpty()) {
+                equipment.setLastObservationDate(olderObservations.get(0).getCreatedDate());
             }
+
+//            if(!observations.isEmpty()) {
+//                Collections.sort(observations, Comparator.comparing(Observation::getCreatedDate));
+//                Date lastObservationDate = observations.get(observations.size() - 1).getCreatedDate();
+//                equipment.setLastObservationDate(lastObservationDate);
+//            }
             equipment.setObservationCount(observations.size());
             equipment.setDeviationCount(deviations.size());
             equipment.setNameString(equipment.getFullName());
@@ -292,10 +302,46 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
             equipment.setLocation(null);
             equipment.setAsset(null);
             equipment.setMeasurementList(new ArrayList<>());
-            equipment.setObservationList(new ArrayList<>());
-
+            for(Observation obs: observations) {
+                optimizeObservation(obs);
+            }
+            equipment.setMeasurementObservations(observations);
         }
         return resultList;
+    }
+
+    private void optimizeObservation(Observation observation) {
+        if(observation.getEquipment() != null) {
+            observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+            observation.setEquipmentString(observation.getEquipment().getFullName());
+            if(observation.getEquipment().getTagId() != null) {
+                observation.setEquipmentTagId(observation.getEquipment().getTagId());
+            }
+            observation.setEquipment(null);
+        }
+        if(observation.getLocation() != null) {
+            observation.setLocationId(observation.getLocation().getLocationId());
+            observation.setLocationString(observation.getLocation().getFullName());
+            observation.setLocation(null);
+        }
+        if(observation.getProject() != null) {
+            observation.setProjectNumber(observation.getProject().getProjectNumber());
+        }
+        if(observation.getQuickChoiceItem() != null) {
+            observation.setQuickChoiceItem(null);
+        }
+        if(!observation.getMeasurementList().isEmpty()) {
+            List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
+            observation.getMeasurementList().clear();
+            if(!statusMeasurements.isEmpty()) {
+                observation.getMeasurementList().addAll(statusMeasurements);
+                observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
+            }
+        }
+        observation.setProject(null);
+        observation.setQuickChoiceItem(null);
+        observation.setEquipment(null);
+        observation.setLocation(null);
     }
 
     @GET

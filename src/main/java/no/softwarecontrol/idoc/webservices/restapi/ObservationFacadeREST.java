@@ -708,6 +708,17 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             observation.setImageList(mediaList);
             observation.setMeasurementList(measurementList);
             em.close();
+
+            observation.setProjectNumber(observation.getProject().getProjectNumber());
+            if(observation.getEquipment() != null) {
+                observation.setEquipmentString(observation.getEquipment().getFullName());
+                observation.setEquipmentTagId(observation.getEquipment().getTagId());
+                observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+            }
+            if(observation.getLocation() != null) {
+                observation.setLocationString(observation.getLocation().getFullName());
+                observation.setLocationId(observation.getLocation().getLocationId());
+            }
             return observation;
         }
         em.close();
@@ -1046,6 +1057,38 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 .setParameter(3, batchSize)
                 .getResultList();
         em.close();
+        for(Observation observation: resultList) {
+            if(observation.getEquipment() != null) {
+                observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+                observation.setEquipmentString(observation.getEquipment().getFullName());
+                if(observation.getEquipment().getTagId() != null) {
+                    observation.setEquipmentTagId(observation.getEquipment().getTagId());
+                }
+                observation.setEquipment(null);
+            }
+            if(observation.getLocation() != null) {
+                observation.setLocationId(observation.getLocation().getLocationId());
+                observation.setLocationString(observation.getLocation().getFullName());
+                observation.setLocation(null);
+            }
+            if(observation.getProject() != null) {
+                observation.setProjectNumber(observation.getProject().getProjectNumber());
+            }
+            if(observation.getQuickChoiceItem() != null) {
+                observation.setQuickChoiceItem(null);
+            }
+            if(!observation.getMeasurementList().isEmpty()) {
+                List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
+                if(!statusMeasurements.isEmpty()) {
+                    observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
+                }
+            }
+            observation.setProject(null);
+            observation.setQuickChoiceItem(null);
+            observation.setEquipment(null);
+            observation.setLocation(null);
+            observation.getMeasurementList().clear();
+        }
         return resultList;
     }
 

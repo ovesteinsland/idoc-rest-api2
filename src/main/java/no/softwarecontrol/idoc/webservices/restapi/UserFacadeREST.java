@@ -146,6 +146,7 @@ public class UserFacadeREST extends AbstractFacade<User> {
             user.setNotificationBySms(entity.getNotificationBySms());
             user.setAuthority(entity.getAuthority());
             user.setLicence(entity.getLicence());
+            user.setPreferenceJson(entity.getPreferenceJson());
             if (!entity.getIntegrationList().isEmpty()) {
                 user.setIntegrationList(entity.getIntegrationList());
             }

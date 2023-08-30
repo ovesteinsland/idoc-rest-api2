@@ -1687,7 +1687,11 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         String queryNextControlDateString = "";
         String groupByString = "";
         String orderLimitString = "";
+        String deletedString = "0";
 
+        if(parameters.isDeleted) {
+            deletedString = "1";
+        }
 
         if (parameters.nextControlDate != null) {
             selectString = "SELECT max(p.next_control_date), p.* FROM project p\n";
@@ -1788,7 +1792,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
                 joinParentString +
                 joinUserString +
                 " WHERE " +
-                " p.deleted = 0 AND \n" +
+                " p.deleted = " + deletedString + " AND \n" +
                 queryUserString +
                 queryDisiplineString +
                 queryStateString +
