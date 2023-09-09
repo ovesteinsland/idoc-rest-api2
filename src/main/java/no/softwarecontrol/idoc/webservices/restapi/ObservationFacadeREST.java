@@ -792,6 +792,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         for (Observation observation : observations) {
             List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
             if(!statusMeasurements.isEmpty()) {
+                observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
                 observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
             }
             if(observation.getEquipment() != null) {
@@ -827,6 +828,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         for (Observation observation : observations) {
             List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
             if(!statusMeasurements.isEmpty()) {
+                observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
                 observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
             }
             if(observation.getEquipment() != null) {
@@ -1080,6 +1082,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             if(!observation.getMeasurementList().isEmpty()) {
                 List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
                 if(!statusMeasurements.isEmpty()) {
+                    observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
                     observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
                 }
             }
@@ -1355,11 +1358,14 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             if(!observation.getMeasurementList().isEmpty()) {
                 List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
                 if(!statusMeasurements.isEmpty()) {
+                    observation.getMeasurementList().clear();
+                    observation.getMeasurementList().addAll(statusMeasurements);
+                    observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
                     observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
+                } else {
+                    observation.getMeasurementList().clear();
                 }
             }
-
-            observation.getMeasurementList().clear();
         }
         return resultList;
     }

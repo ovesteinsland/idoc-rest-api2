@@ -1773,7 +1773,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             if (parameters.parentEntity.equalsIgnoreCase("company")) {
                 String companyId = parameters.entityIds.get(0);
                 joinParentString = " JOIN company_has_project chp ON chp.project_project_id = p.project_id \n";
-                queryParentString = " p.parent IS NULL AND chp.company_company_id = '" + companyId + "' \n";
+                queryParentString = " chp.company_company_id = '" + companyId + "' AND p.parent IS NULL \n";
 
             } else if (parameters.parentEntity.equalsIgnoreCase("asset")) {
                 String assetId = parameters.entityIds.get(0);
@@ -1787,19 +1787,22 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             joinUserString = " LEFT JOIN project_has_user phu ON phu.project_project_id = p.project_id \n";
             queryUserString = " phu.user_user_id = '" + userId + "' AND\n";
         }
+
+
+
         sqlString = selectString +
                 " JOIN company_has_project ahp	ON ahp.project_project_id = p.project_id\n" +
                 joinParentString +
                 joinUserString +
-                " WHERE " +
+                " WHERE \n" +
                 " p.deleted = " + deletedString + " AND \n" +
                 queryUserString +
                 queryDisiplineString +
                 queryStateString +
                 queryDateString +
-                " ahp.company_company_id = ?1 AND \n" +
-                queryNextControlDateString +
+                " ahp.company_company_id = '" + parameters.authorityId + "' AND \n" +
                 queryParentString +
+                queryNextControlDateString +
                 groupByString +
                 orderLimitString;
 
@@ -1854,8 +1857,9 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
     public Integer countProjects(ProjectRequestParameters parameters) {
 
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        Query queryCounter = em.createNativeQuery(createSqlString(parameters, true, ""))
-                .setParameter(1, parameters.authorityId);
+        String sqlQuery = createSqlString(parameters, true, "");
+        Query queryCounter = em.createNativeQuery(sqlQuery);
+                //.setParameter(1, parameters.authorityId);
         Number counterUnassigned = (Number) queryCounter.getSingleResult();
         Integer integerCounter = Integer.parseInt(counterUnassigned.toString());
 
@@ -1876,7 +1880,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
         String queryString = createSqlString(parameters, false, "");
         List<Project> resultList = em.createNativeQuery(queryString, Project.class)
-                .setParameter(1, parameters.authorityId)
+                //.setParameter(1, parameters.authorityId)
                 .getResultList();
 
         em.close();
