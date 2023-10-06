@@ -570,6 +570,14 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
 
     }
 
+    @PUT
+    @Path("editModifiedDate/{id}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public void editModifiedDate(@PathParam("id") String id, Project entity) {
+        Project project = this.findNative(id);
+        project.setModifiedDate(entity.getModifiedDate());
+        this.edit(project);
+    }
 
     @PUT
     @Path("editProjectOnly/{id}")
@@ -590,6 +598,12 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             project.setCustomerRef(entity.getCustomerRef());
             project.setFreeText(entity.getFreeText());
             project.setProjectState(entity.getProjectState());
+            if(entity.getScheduledStartDate() != null) {
+                project.setScheduledStartDate(entity.getScheduledStartDate());
+            }
+            if(entity.getScheduledEndDate() != null) {
+                project.setScheduledEndDate(entity.getScheduledEndDate());
+            }
             if (entity.getProjectNumber() == 0) {
 
             } else {
@@ -875,6 +889,63 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         }
     }
 
+    @GET
+    @Path("linkUserSimple/{userId}/{projectId}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public void linkUserSimple(@PathParam("userId") String userId, @PathParam("projectId") String projectId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            Query query = em.createNativeQuery("SELECT COUNT(*) FROM project_has_user \n " +
+                            " WHERE project_project_id = ?1 AND user_user_id = ?2")
+                    .setParameter(1, projectId)
+                    .setParameter(2, userId);
+
+            Number counter = (Number) query.getSingleResult();
+            if (counter.intValue() == 0) {
+                tx.begin();
+                final int i = em.createNativeQuery(
+                                "INSERT INTO project_has_user (project_project_id, user_user_id)\n" +
+                                        "VALUES (?, ?);"
+                        ).setParameter(1, projectId)
+                        .setParameter(2, userId)
+                        .executeUpdate();
+                tx.commit();
+            }
+        } catch (Exception exp) {
+            tx.rollback();
+            System.out.println("Exception while inserting into project_has_user: " + exp.getMessage());
+        } finally {
+            em.close();
+        }
+    }
+
+    @GET
+    @Path("unlinkUserSimple/{userId}/{projectId}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public void unlinkUserSimple(@PathParam("userId") String userId, @PathParam("projectId") String projectId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            tx.begin();
+            Query query = em.createNativeQuery("DELETE FROM project_has_user \n " +
+                            " WHERE project_project_id = ?1 AND user_user_id = ?2")
+                    .setParameter(1, projectId)
+                    .setParameter(2, userId);
+
+            Number counter = (Number) query.executeUpdate();
+            if (counter.intValue() == 1) {
+                //System.out.println("DELETED company_has_project SUCCEEDED");
+            }
+            tx.commit();
+        } catch (Exception exp) {
+            tx.rollback();
+            System.out.println("Exception while inserting into company_has_project: " + exp.getMessage());
+        } finally {
+            em.close();
+        }
+    }
+
     @PUT
     @Path("linkUser/{userId}")
     @Consumes({MediaType.APPLICATION_JSON})
@@ -932,9 +1003,67 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         } finally {
             em.close();
         }
-
     }
 
+    @GET
+    @Path("linkCompanySimple/{companyId}/{projectId}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public void linkCompanySimple(@PathParam("companyId") String companyId, @PathParam("projectId") String projectId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_project \n " +
+                            " WHERE company_company_id = ?1 AND project_project_id = ?2")
+                    .setParameter(1, companyId)
+                    .setParameter(2, projectId);
+
+            Number counter = (Number) query.getSingleResult();
+            if (counter.intValue() == 0) {
+                tx.begin();
+                final int i = em.createNativeQuery(
+                                "INSERT INTO company_has_project (company_company_id, project_project_id)\n" +
+                                        "VALUES (?, ?);"
+                        ).setParameter(1, companyId)
+                        .setParameter(2, projectId
+                        )
+                        .executeUpdate();
+                tx.commit();
+            }
+        } catch (Exception exp) {
+            tx.rollback();
+            System.out.println("Exception while inserting into company_has_project: " + exp.getMessage());
+        } finally {
+            em.close();
+        }
+    }
+
+    @GET
+    @Path("unlinkCompanySimple/{companyId}/{projectId}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public void unlinkCompanySimple(@PathParam("companyId") String companyId, @PathParam("projectId") String projectId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            tx.begin();
+            Query query = em.createNativeQuery("DELETE FROM company_has_project \n " +
+                            " WHERE company_company_id = ?1 AND project_project_id = ?2")
+                    .setParameter(1, companyId)
+                    .setParameter(2, projectId);
+
+            Number counter = (Number) query.executeUpdate();
+            if (counter.intValue() == 1) {
+                System.out.println("DELETED company_has_project SUCCEEDED");
+            }
+            tx.commit();
+        } catch (Exception exp) {
+            tx.rollback();
+            System.out.println("Exception while inserting into company_has_project: " + exp.getMessage());
+        } finally {
+            em.close();
+        }
+    }
+
+    @Deprecated
     @PUT
     @Path("linkCompany/{companyId}")
     @Consumes({MediaType.APPLICATION_JSON})
@@ -1757,15 +1886,33 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
             String strFromDate = dateFormatter.format(parameters.fromDate);
             String strToDate = dateFormatter.format(parameters.toDate);
-
+            String nextDateQuery = " (p.next_control_date > '" + strFromDate + "' AND p.next_control_date < '" + strToDate + "')\n";
             String dateField = parameters.dateField.getValue();
-            queryDateString = " ((p." + dateField + " >= '" + strFromDate + "' AND p." + dateField + " <= '" + strToDate + "') OR " +
-                    "(p.next_control_date >= '" + strFromDate + "' AND p.next_control_date < '" + strToDate + "')) AND \n";
-            if (parameters.excludeUpcoming) {
-                queryDateString = " (p." + dateField + " >= '" + strFromDate + "' AND p." + dateField + " <= '" + strToDate + "') AND \n";
-            }
-            if (parameters.isUpcoming) {
-                queryDateString = " (p.next_control_date > '" + strFromDate + "' AND p.next_control_date < '" + strToDate + "') AND \n";
+            if(parameters.dateField != ProjectRequestParameters.DateField.SCHEDULED_DATE) {
+                queryDateString = " ((p." + dateField + " >= '" + strFromDate + "' AND p." + dateField + " <= '" + strToDate + "') OR " +
+                        nextDateQuery;
+                if (parameters.excludeUpcoming) {
+                    queryDateString = " (p." + dateField + " >= '" + strFromDate + "' AND p." + dateField + " <= '" + strToDate + "'\n";
+                }
+                if (parameters.isUpcoming) {
+                    queryDateString = /*"(" + */nextDateQuery;
+                } else {
+                    queryDateString += ")";
+                }
+                queryDateString += " AND \n";
+            } else {
+                queryDateString =
+                         "(( \n" +
+                        		"(p.scheduled_start_date is NOT NULL AND p.scheduled_start_date >= '" + strFromDate + "' AND p.scheduled_start_date <= '" + strToDate + "')\n" +
+                        	"OR\n" +
+                        		"(p.scheduled_start_date is NULL AND p.created_date >= '" + strFromDate + "' AND p.created_date <= '" + strToDate + "'))\n";
+                if(!parameters.excludeUpcoming){
+                    queryDateString +=
+                        	"OR\n" +
+                                    nextDateQuery +
+                          ")\n";
+                }
+                queryDateString += " AND \n";
             }
         }
 
@@ -1816,21 +1963,6 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
     public List<Disipline> loadRelevantDisiplines(ProjectRequestParameters parameters) {
 
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-//        List<Project> resultList = (List<Project>) em.createNativeQuery("SELECT * FROM project p\n" +
-//                        "JOIN company_has_project chp ON chp.project_project_id = p.project_id\n" +
-//                        "JOIN company_has_project ahp ON ahp.project_project_id = p.project_id\n" +
-//                        "WHERE\n " +
-//                        " chp.company_company_id = ?1 AND\n" +
-//                        " ahp.company_company_id = ?2 AND\n" +
-//                        " p.parent is NULL AND\n" +
-//                        " p.deleted = 0\n" +
-//                        " group by p.disipline \n",
-//                Project.class)
-//                .setParameter(1, companyId)
-//                .setParameter(2, authorityId)
-//                //.setParameter(3,null)
-//                .getResultList();
 
         CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
         Company authority = companyFacadeREST.findNative(parameters.authorityId);

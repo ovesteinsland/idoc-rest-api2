@@ -158,25 +158,39 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
         } finally {
             em.close();
         }
+    }
 
-//        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-//        Asset asset = this.find(entity.getAssetId());
-//        Company company = companyFacadeREST.find(companyId);
-//        if (company == null){
-//            System.out.println("Company == null: " + companyId);
-//        } else {
-//            System.out.println("Linker asset: " + company.getName());
-//        }
-//        if (asset != null && company != null) {
-//            if (!asset.getCompanyList().contains(company)) {
-//                asset.getCompanyList().add(company);
-//                this.edit(asset);
-//            }
-//            if (!company.getAssetList().contains(asset)) {
-//                company.getAssetList().add(asset);
-//                companyFacadeREST.edit(company);
-//            }
-//        }
+    @GET
+    @Path("linkCompanyOptimized/{companyId}/{assetId}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public Integer linkCompanyOptimized(@PathParam("companyId") String companyId, @PathParam("assetId") String assetId) {
+        Integer intCounter = 0;
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_asset \n " +
+                            " WHERE company_company_id = ?1 AND asset_asset_id = ?2")
+                    .setParameter(1, companyId)
+                    .setParameter(2, assetId);
+
+            Number counter = (Number) query.getSingleResult();
+            if (counter.intValue() == 0) {
+                tx.begin();
+                final int i = em.createNativeQuery(
+                                "INSERT INTO company_has_asset (company_company_id, asset_asset_id)\n" +
+                                        "VALUES (?, ?);"
+                        ).setParameter(1, companyId)
+                        .setParameter(2, assetId)
+                        .executeUpdate();
+                tx.commit();
+                intCounter = i;
+            }
+        } catch (Exception exp) {
+            tx.rollback();
+        } finally {
+            em.close();
+            return intCounter;
+        }
     }
 
     @PUT
@@ -204,25 +218,32 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
         } finally {
             em.close();
         }
+    }
 
-//        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-//        Asset asset = this.find(entity.getAssetId());
-//        Company company = companyFacadeREST.find(companyId);
-//        if (asset != null && company != null) {
-//            asset.setDeleted(true);
-//            this.edit(asset);
-//            AssetGroup assetGroup = asset.getAssetGroup();
-//            if (assetGroup != null) {
-//
-//            }
-//            if (asset.getCompanyList().contains(company)) {
-//                asset.getCompanyList().remove(company);
-//            }
-//            if (company.getAssetList().contains(asset)) {
-//                company.getAssetList().remove(asset);
-//                companyFacadeREST.edit(company);
-//            }
-//        }
+    @GET
+    @Path("unlinkCompanyOptimized/{companyId}/{assetId}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public Integer unlinkCompanyOptimized(@PathParam("companyId") String companyId,@PathParam("assetId") String assetId) {
+        Integer intCounter = 0;
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            tx.begin();
+            Query query = em.createNativeQuery("DELETE FROM company_has_asset \n " +
+                            " WHERE company_company_id = ?1 AND asset_asset_id = ?2")
+                    .setParameter(1, companyId)
+                    .setParameter(2, assetId);
+
+            Number counter = (Number) query.executeUpdate();
+            intCounter = counter.intValue();
+            tx.commit();
+
+        } catch (Exception exp) {
+            tx.rollback();
+        } finally {
+            em.close();
+            return intCounter;
+        }
     }
 
     @PUT

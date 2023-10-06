@@ -25,9 +25,7 @@ import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * @author ovesteinsland
@@ -277,13 +275,18 @@ public class UserFacadeREST extends AbstractFacade<User> {
         if (!results.isEmpty()) {
             PasswordAuthentication passwordAuthentication = new PasswordAuthentication(16);
             String hashedPassword = results.get(0).getPassword();
-            if (passwordAuthentication.authenticate(password.toCharArray(), hashedPassword)) {
+            if(hashedPassword != null) {
+                if (passwordAuthentication.authenticate(password.toCharArray(), hashedPassword)) {
+
+                } else {
+                    System.out.println("Authentication FAILED");
+                    results = new ArrayList<>();
+                }
             } else {
-                System.out.println("Authentication FAILED");
                 results = new ArrayList<>();
             }
         } else {
-            System.out.println("results = EMPTY");
+            results = new ArrayList<>();
         }
         em.close();
         return results;
@@ -477,7 +480,38 @@ public class UserFacadeREST extends AbstractFacade<User> {
                 .setParameter(1, companyId)
                 .getResultList();
         em.close();
+        for(User user: resultList) {
+            user.defaultCompanyName = user.getCompanyName();
+        }
         return resultList;
+    }
+
+    @GET
+    @Path("loadByCompanyWithSubsidiaries/{companyId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<User> loadByCompanyWithSubsidiaries(@PathParam("companyId") String companyId) {
+        List<User> companyUsers = loadByCompanyAll(companyId);
+        Collections.sort(companyUsers, Comparator.comparing(User::getLastNameFirst));
+        for(User user: companyUsers) {
+            user.defaultCompanyName = user.getCompanyName();
+        }
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<User> resultList = (List<User>) em.createNativeQuery(
+                        "SELECT u.* FROM contract con\n" +
+                        "JOIN company c on c.company_id = con.partner\n" +
+                        "JOIN company_has_user chu on chu.company = c.company_id\n" +
+                        "JOIN user u on u.user_id = chu.user\n" +
+                        "WHERE con.company = ?1 AND con.contract_type = 'SUBSIDIARY'",
+                        User.class)
+                .setParameter(1, companyId)
+                .getResultList();
+        em.close();
+        for(User user: resultList) {
+            user.defaultCompanyName = user.getCompanyName();
+        }
+        Collections.sort(resultList, Comparator.comparing(User::getLastNameFirst));
+        companyUsers.addAll(resultList);
+        return companyUsers;
     }
 
     @GET

@@ -873,6 +873,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         if (observation.getProject() != null) {
             String observationNo = String.format("%d.%03d", observation.getProject().getProjectNumber(), observation.getObservationNo());
             observation.setNumberString(observationNo);
+            observation.setProjectNumber(observation.getProject().getProjectNumber());
         }
         return observation;
     }
@@ -915,7 +916,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Produces({MediaType.APPLICATION_JSON})
     public List<Observation> loadObservationsForCompany(@PathParam("companyId") String companyId,
                                                         @PathParam("stateString") String stateString, List<Integer> tgs) {
-        Integer state = new Integer(stateString);
+        Integer state = Integer.parseInt(stateString);
         String tgsString = "(";
         for (Integer tg : tgs) {
             tgsString += Integer.toString(tg) + ",";
@@ -941,6 +942,29 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         return resultList;
     }
 
+    @GET
+    @Path("loadByEquipmentWithProject/{equipmentId}/{projectId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Observation> loadByEquipmentWithProject(@PathParam("equipmentId") String equipmentId,
+                                                        @PathParam("projectId") String projectId) {
+
+
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
+                                + "* FROM observation obs\n"
+                                + "where obs.deleted = 0 and obs.equipment = ?1 and obs.project = ?2 " + "\n"
+                                + "order by obs.created_date DESC\n",
+                        Observation.class)
+                .setParameter(1, equipmentId)
+                .setParameter(2, projectId)
+                .getResultList();
+        em.close();
+        for (Observation observation : resultList) {
+            optimizeObservation(observation);
+            //observation.setProjectId(observation.getProject().getProjectId());
+        }
+        return resultList;
+    }
     @PUT
     @Path("loadObservationsForCompany/{companyId}/{stateString}/{batchOffset}/{batchSize}")
     @Produces({MediaType.APPLICATION_JSON})
@@ -950,9 +974,9 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                                                         @PathParam("batchSize") String batchSizeString,
                                                         List<Integer> tgs) {
 
-        Integer batchOffset = new Integer(batchOffsetString);
-        Integer batchSize = new Integer(batchSizeString);
-        Integer state = new Integer(stateString);
+        Integer batchOffset = Integer.parseInt(batchOffsetString);
+        Integer batchSize = Integer.parseInt(batchSizeString);
+        Integer state = Integer.parseInt(stateString);
         String tgsString = "(";
         for (Integer tg : tgs) {
             tgsString += Integer.toString(tg) + ",";
@@ -978,7 +1002,6 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             observation.setProjectId(observation.getProject().getProjectId());
         }
         return resultList;
-
     }
 
     @PUT
@@ -993,9 +1016,9 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                                                                 @PathParam("showOpenOnly") Boolean showOpenOnly,
                                                                 List<Integer> tgs) {
 
-        Integer batchOffset = new Integer(batchOffsetString);
-        Integer batchSize = new Integer(batchSizeString);
-        Integer state = new Integer(stateString);
+        Integer batchOffset = Integer.parseInt(batchOffsetString);
+        Integer batchSize = Integer.parseInt(batchSizeString);
+        Integer state = Integer.parseInt(stateString);
         String tgsString = "(";
         for (Integer tg : tgs) {
             tgsString += Integer.toString(tg) + ",";

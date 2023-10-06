@@ -360,12 +360,6 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
                 resultList = neverControlled;
             } else if (parameters.fromDate != null && parameters.toDate != null) {
                 List<Equipment> intervalControlled = resultList.stream().filter(r -> {
-//                    if (r.getLastObservationDate() != null) {
-//                        return r.getLastObservationDate().compareTo(parameters.fromDate) > 0
-//                                && r.getLastObservationDate().compareTo(parameters.toDate) <= 0;
-//                    } else {
-//                        return false;
-//                    }
                     if(r.getEquipmentId().equalsIgnoreCase("DBC8EECD-8212-4E5A-9694-CE04C44CB9A0")) {
                         System.out.println("Skal ha en observasjon fra 2021");
                     }
@@ -429,13 +423,12 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
                 .collect(Collectors.toList());
         if (!olderObservations.isEmpty()) {
             Collections.sort(olderObservations, (Observation o1, Observation o2) -> o2.getCreatedDate().compareTo(o1.getCreatedDate()));
-
             for(Observation olderObservation: olderObservations) {
+                optimizeObservation(olderObservation);
                 olderObservation.setEquipment(null);
             }
-            //equipment.setOlderObservations(olderObservations);
+            equipment.setOlderObservations(olderObservations);
             equipment.setLastObservationDate(olderObservations.get(0).getCreatedDate());
-
         }
         equipment.setObservationCount(observations.size());
         equipment.setDeviationCount(deviations.size());
@@ -469,6 +462,9 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
             observation.setQuickChoiceItem(null);
         }
         if (!observation.getMeasurementList().isEmpty()) {
+            for(Measurement measurement: observation.getMeasurementList()) {
+                measurement.getObservationList().clear();
+            }
             List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
             observation.getMeasurementList().clear();
             if (!statusMeasurements.isEmpty()) {
@@ -477,6 +473,7 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
             }
         }
         observation.setProject(null);
+        observation.setOldProject(null);
         observation.setQuickChoiceItem(null);
         observation.setEquipment(null);
         observation.setLocation(null);
@@ -501,7 +498,16 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
                     r.getDeviation()>0).toList();
             equipment.setObservationCount(projectObservations.size());
             equipment.setDeviationCount(deviations.size());
-            //equipment.setMeasurementObservations(projectObservations);
+            for(Observation observation: projectObservations) {
+                observation.setProject(null);
+                observation.setEquipment(null);
+                observation.setOldProject(null);
+                observation.setLocation(null);
+                observation.setQuickChoiceItem(null);
+                observation.getImageList().clear();
+                observation.getAnswerValueList().clear();
+            }
+            equipment.setMeasurementObservations(projectObservations);
             equipment.setNameString(equipment.getFullName());
             if(equipment.getLocation() != null) {
                 equipment.setLocationString(equipment.getLocation().getFullName());

@@ -776,6 +776,32 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
     }
 
     @GET
+    @Path("loadByAsset/{assetId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Company> loadByAsset(@PathParam("assetId") String assetId) {
+        List<Company> optimizedCompanies = new ArrayList<>();
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Company> resultList = (List<Company>) em.createNativeQuery("SELECT c.* \n"
+                                + "FROM company c\n"
+                                + "JOIN company_has_asset cha\n"
+                                + "    on c.company_id = cha.company_company_id\n"
+                                + "JOIN asset a\n"
+                                + "	on a.asset_id = cha.asset_asset_id\n"
+                                + "WHERE a.asset_id = ?1 ORDER BY CONCAT(c.name, c.lastname,', ',c.firstname) COLLATE utf8mb4_danish_ci ASC ",
+                        Company.class)
+                .setParameter(1, assetId)
+                .getResultList();
+
+        for (Company company : resultList) {
+            optimizedCompanies.add(optimizeCompany(company));
+            company.getDisiplineList().clear();
+            company.getInvoiceList().clear();
+            company.getReportList().clear();
+        }
+        return optimizedCompanies;
+    }
+
+    @GET
     @Path("loadByAuthorityOptimized/{companyid}/{batchOffset}/{batchSize}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Company> loadByAuthorityOptimized(@PathParam("companyid") String id,
