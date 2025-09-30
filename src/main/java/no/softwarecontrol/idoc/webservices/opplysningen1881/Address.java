@@ -1,12 +1,12 @@
 package no.softwarecontrol.idoc.webservices.opplysningen1881;
 
 public class Address {
-    private String street;
-    private String houseNumber;
-    private String entrance;
-    private String postCode;
-    private String postArea;
-    private String addressString;
+    private String street = "";
+    private String houseNumber = "";
+    private String entrance = "";
+    private String postCode = "";
+    private String postArea = "";
+    private String addressString = "";
 
     public String getStreet() {
         return street;

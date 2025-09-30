@@ -12,6 +12,7 @@ import jakarta.persistence.EntityTransaction;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityobject.*;
+import no.softwarecontrol.idoc.webservices.exception.UnsupportedMediaException;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
 
 import java.util.Date;
@@ -55,7 +56,6 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
             entity.getAssetList().add(asset);
             assetFacadeREST.edit(asset);
         }
-        System.out.println("ImageFacadeREST.createWithProject: SUCCEEDED");
     }
 
     @POST
@@ -71,7 +71,6 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
             entity.getLocationList().add(location);
             locationFacadeREST.edit(location);
         }
-        System.out.println("ImageFacadeREST.createWithProject: SUCCEEDED");
     }
 
     @POST
@@ -87,7 +86,7 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
             project.setModifiedDate(new Date());
             project.getImageList().add(entity);
             entity.getProjectList().add(project);
-            projectFacadeREST.edit(project);
+            projectFacadeREST.editProjectOnly(project.getProjectId(), project);
         } else {
 
         }
@@ -158,7 +157,7 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
                     super.edit(entity);
                 }
             } else {
-                throw new Exception("Observation for this image is not yet synchronized - Throw ERROR");
+                throw new UnsupportedMediaException("Observation for this image is not yet synchronized - Throw ERROR");
             }
         } else {
             if (observation != null) {

@@ -7,9 +7,13 @@ package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.Query;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityobject.Disipline;
+import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
 
 import java.util.List;
 
@@ -55,7 +59,8 @@ public class DisiplineFacadeREST extends AbstractFacade<Disipline> {
     @Path("{id}")
     @Produces({ MediaType.APPLICATION_JSON})
     public Disipline find(@PathParam("id") String id) {
-        return super.find(id);
+        Disipline entity = super.find(id);
+        return entity;
     }
 
     @GET
@@ -77,6 +82,36 @@ public class DisiplineFacadeREST extends AbstractFacade<Disipline> {
     @Produces(MediaType.TEXT_PLAIN)
     public String countREST() {
         return String.valueOf(super.count());
+    }
+
+    void linkToCompany(String companyId, String disiplineId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_disipline \n " +
+                            " WHERE company_company_id = ?1 AND disipline_disipline_id = ?2")
+                    .setParameter(1, companyId)
+                    .setParameter(2, disiplineId);
+
+            Number counter = (Number) query.getSingleResult();
+            if (counter.intValue() == 0) {
+                tx.begin();
+                final int i = em.createNativeQuery(
+                                "INSERT INTO company_has_disipline (company_company_id, disipline_disipline_id)\n" +
+                                        "VALUES (?, ?);"
+                        ).setParameter(1, companyId)
+                        .setParameter(2, disiplineId)
+                        .executeUpdate();
+                tx.commit();
+            } else {
+                //System.out.println("No problem: company_has_project already exists");
+            }
+        } catch (Exception exp) {
+            tx.rollback();
+            System.out.println("Exception while inserting into company_has_disipline: " + exp.getMessage());
+        } finally {
+            em.close();
+        }
     }
     
 }

@@ -6,14 +6,17 @@
 package no.softwarecontrol.idoc.web.images;
 
 import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.Part;
+import no.softwarecontrol.idoc.storage.MediaStorage;
 
 import java.io.*;
+import java.security.GeneralSecurityException;
 import java.util.Enumeration;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -23,7 +26,11 @@ import java.util.logging.Logger;
  * @author ovesteinsland
  */
 @WebServlet(name = "FileUploadServlet", urlPatterns = {"/upload"})
-@MultipartConfig()
+@MultipartConfig(
+        fileSizeThreshold = 1024 * 1024 * 5, // 2MB - Temp storage threshold in memory
+        maxFileSize = 1024 * 1024 * 20,      // 10MB - Maximum file size
+        maxRequestSize = 1024 * 1024 * 50   // 50MB - Maximum request size (file + data)
+)
 public class FileUploadServlet extends HttpServlet {
 
     private final static Logger LOGGER = Logger.getLogger(FileUploadServlet.class.getCanonicalName());
@@ -32,60 +39,21 @@ public class FileUploadServlet extends HttpServlet {
             HttpServletResponse response)
             throws ServletException, IOException {
 
-        response.setContentType("text/html;charset=UTF-8");
-        
-        //String str_request = IOUtils.toString(request.getInputStream());
-        Enumeration<String> headerNames = request.getHeaderNames();
-        // Create path components to save the file
-        Enumeration<String> parameterNames = request.getParameterNames();
-        final String path = request.getParameter("path");
-        //System.out.println("Fileupload: path = " + path);
-        File imagePath = new File(ImageResource.getImageUrl()+path);
-        if(!imagePath.exists()){
-            imagePath.mkdirs();
-        }
-        
-        final Part filePart = request.getPart("file");
-        final String fileName = getFileName(filePart);
-
-        OutputStream out = null;
-        InputStream filecontent = null;
-        final PrintWriter writer = response.getWriter();
-
         try {
-            File uploadFile = new File(ImageResource.getImageUrl() + path + File.separator
-                    + fileName);
-            out = new FileOutputStream(uploadFile);
-            filecontent = filePart.getInputStream();
+            response.setContentType("text/html;charset=UTF-8");
 
-            int read = 0;
-            final byte[] bytes = new byte[1024];
-            int kBytes = 0;
-            while ((read = filecontent.read(bytes)) != -1) {
-                out.write(bytes, 0, read);
-                kBytes++;
-            }
-            
-            //writer.println("New file " + fileName + " created ");
+            for (Part part : request.getParts()) {
+                String fileName = getFileName(part);
+                InputStream inputStream = part.getInputStream();
+                byte[] fileContent = inputStream.readAllBytes();
 
-        } catch (FileNotFoundException fne) {
-            /*writer.println("You either did not specify a file to upload or are "
-                    + "trying to upload a file to a protected or nonexistent "
-                    + "location.");
-            writer.println("<br/> ERROR: " + fne.getMessage());*/
+                //path = "_" + path;
+                //path = "software-control/" + path;
+                MediaStorage.uploadFile(fileName, "image/jpeg", fileContent, "idocdatabase-developement.appspot.com");
+                System.out.println("fileContent.length = " + fileContent.length);
+            }
+        } catch (GeneralSecurityException gse) {
 
-            LOGGER.log(Level.SEVERE, "Problems during file upload. Error: {0}",
-                    new Object[]{fne.getMessage()});
-        } finally {
-            if (out != null) {
-                out.close();
-            }
-            if (filecontent != null) {
-                filecontent.close();
-            }
-            if (writer != null) {
-                writer.close();
-            }
         }
     }
 

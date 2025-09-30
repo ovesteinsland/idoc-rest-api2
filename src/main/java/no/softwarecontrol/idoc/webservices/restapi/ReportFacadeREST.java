@@ -10,6 +10,8 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.Query;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityobject.*;
@@ -53,20 +55,25 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Path("createWithProject/{projectId}/{disiplineId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithProject(@PathParam("projectId") String projectId, @PathParam("disiplineId") String disiplineId, Report entity) {
+
         createList(entity);
         super.create(entity);
-        linkToProject(projectId, entity);
+        //linkToProject(projectId, entity);
+        linkToProjectNative(projectId, entity.getReportId());
         linkToDisipline(disiplineId, entity);
+
     }
 
     @POST
     @Path("createWithCompany/{companyId}/{disiplineId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithCompany(@PathParam("companyId") String companyId, @PathParam("disiplineId") String disiplineId, Report entity) {
+
         createList(entity);
         super.create(entity);
-        linkToCompany(companyId, entity);
+        linkToCompanyNative(companyId, entity.getReportId());
         linkToDisipline(disiplineId, entity);
+
     }
 
     @POST
@@ -81,6 +88,9 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     private void createList(Report entity) {
         for (ReportSection reportSection : entity.getReportSectionList()) {
             reportSection.setReport(entity);
+            for(ReportSectionLanguage reportSectionLanguage : reportSection.getReportSectionLanguageList()) {
+                reportSectionLanguage.setReportSection(reportSection);
+            }
         }
         for (ReportParameter reportParameter : entity.getReportParameterList()) {
             reportParameter.setReport(entity);
@@ -101,8 +111,36 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
                 report.getProjectList().add(project);
 
             }
-            projectFacadeREST.edit(project);
+            projectFacadeREST.editProjectOnly(project.getProjectId(),project);
             super.edit(report);
+        }
+    }
+
+    public void linkToProjectNative(String projectId, String reportId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            Query query = em.createNativeQuery("SELECT COUNT(*) FROM project_has_report \n " +
+                            " WHERE project_project_id = ?1 AND report_report_id = ?2")
+                    .setParameter(1, projectId)
+                    .setParameter(2, reportId);
+
+            Number counter = (Number) query.getSingleResult();
+            if (counter.intValue() == 0) {
+                tx.begin();
+                final int i = em.createNativeQuery(
+                                "INSERT INTO project_has_report (project_project_id, report_report_id)\n" +
+                                        "VALUES (?, ?);"
+                        ).setParameter(1, projectId)
+                        .setParameter(2, reportId)
+                        .executeUpdate();
+                tx.commit();
+            }
+        } catch (Exception exp) {
+            tx.rollback();
+            System.out.println("Exception while inserting into project_has_report: " + exp.getMessage());
+        } finally {
+            em.close();
         }
     }
 
@@ -125,16 +163,45 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
         }
     }
 
+    public void linkToCompanyNative(String companyId, String reportId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+        try {
+            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_report \n " +
+                            " WHERE company_company_id = ?1 AND report_report_id = ?2")
+                    .setParameter(1, companyId)
+                    .setParameter(2, reportId);
+
+            Number counter = (Number) query.getSingleResult();
+            if (counter.intValue() == 0) {
+                tx.begin();
+                final int i = em.createNativeQuery(
+                                "INSERT INTO company_has_report (company_company_id, report_report_id)\n" +
+                                        "VALUES (?, ?);"
+                        ).setParameter(1, companyId)
+                        .setParameter(2, reportId)
+                        .executeUpdate();
+                tx.commit();
+            }
+        } catch (Exception exp) {
+            tx.rollback();
+            System.out.println("Exception while inserting into project_has_report: " + exp.getMessage());
+        } finally {
+            em.close();
+        }
+    }
+
     @PUT
+    @Deprecated
     @Path("linkToDisipline/{disiplineId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToDisipline(@PathParam("disiplineId") String disiplineId, Report entity) {
         Report report = this.find(entity.getReportId());
         Disipline disipline = disiplineFacadeREST.find(disiplineId);
         if (disipline != null && report != null) {
-            if (!disipline.getReportList().contains(report)) {
-                disipline.getReportList().add(report);
-            }
+//            if (!disipline.getReportList().contains(report)) {
+//                disipline.getReportList().add(report);
+//            }
             report.setDisipline(disipline);
             disiplineFacadeREST.edit(disipline);
             super.edit(report);
@@ -200,6 +267,75 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     }
 
     @GET
+    @Path("loadTemplateByCompany/{companyId}/{disiplineId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Report> loadTemplateByCompany(@PathParam("companyId") String companyId, @PathParam("disiplineId") String disiplineId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT "
+                                + "* FROM report r\n"
+                                + "JOIN company_has_report chr on chr.report_report_id = r.report_id \n"
+                                + "WHERE chr.company_company_id = ?1 AND  r.disipline = ?2",
+                        Report.class)
+                .setParameter(1, companyId)
+                .setParameter(2, disiplineId)
+                .getResultList();
+        em.close();
+        return resultList;
+    }
+
+    @GET
+    @Path("loadMasterByDisipline/{disiplineId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Report> loadMasterByDisipline(@PathParam("disiplineId") String disiplineId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT DISTINCT r.* FROM report r \n"
+                                + "LEFT JOIN report_section rs on rs.report = r.report_id  \n"
+                                + "LEFT JOIN report_section_language rsl on rsl.report_section = rs.report_section_id  \n"
+                                + "WHERE r.disipline = ?1 AND r.is_master = 1",
+                        Report.class)
+                .setParameter(1, disiplineId)
+                .getResultList();
+        em.close();
+        return resultList;
+    }
+
+    @GET
+    @Path("loadByProject/{projectId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Report> loadByProject(@PathParam("projectId") String projectId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT DISTINCT r.* FROM report r \n"
+                                + "JOIN project_has_report phr on phr.report_report_id = r.report_id \n"
+                                + "LEFT JOIN report_section rs on rs.report = r.report_id  \n"
+                                + "LEFT JOIN report_section_language rsl on rsl.report_section = rs.report_section_id  \n"
+                                + "WHERE phr.project_project_id = ?1",
+                        Report.class)
+                .setParameter(1, projectId)
+                .getResultList();
+        em.close();
+        return resultList;
+    }
+
+    //
+    @GET
+    @Path("loadAllMasters")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Report> loadAllMasters() {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT *\n"
+                                + "FROM report \n"
+                                + "WHERE is_master = 1",
+                        Report.class)
+                .getResultList();
+        em.close();
+        for(Report report: resultList) {
+            report.setDisipline(null);
+        }
+        return resultList;
+    }
+
+    @GET
+    @Deprecated
     @Path("findByProject/{projectId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Report> findByProject(@PathParam("projectId") String projectId) {

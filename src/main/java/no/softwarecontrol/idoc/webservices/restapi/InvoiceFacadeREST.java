@@ -2,17 +2,18 @@ package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityobject.Company;
 import no.softwarecontrol.idoc.data.entityobject.Invoice;
+import no.softwarecontrol.idoc.data.entityobject.Observation;
 import no.softwarecontrol.idoc.data.entityobject.Project;
 import no.softwarecontrol.idoc.data.requestparams.ProjectRequestParameters;
+import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
+import org.checkerframework.checker.units.qual.A;
 
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Stateless
 @Path("no.softwarecontrol.idoc.entityobject.invoice")
@@ -25,6 +26,21 @@ public class InvoiceFacadeREST extends AbstractFacade<Invoice> {
     @Override
     protected String getSelectAllQuery(){
         return "Invoice.findAll";
+    }
+
+    @GET
+    @Path("loadByCompany/{companyId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Invoice> loadByCompany(@PathParam("companyId") String companyId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Invoice> resultList = (List<Invoice>) em.createNativeQuery("SELECT "
+                                + "* FROM invoice i\n"
+                                + "WHERE i.company = ?1\n",
+                        Invoice.class)
+                .setParameter(1, companyId)
+                .getResultList();
+        em.close();
+        return resultList;
     }
 
     @POST
@@ -87,6 +103,7 @@ public class InvoiceFacadeREST extends AbstractFacade<Invoice> {
 
         projectRequestParameters.fromDate = previousInvoice.getStartDate();
         projectRequestParameters.toDate = new Date();
+        projectRequestParameters.dateField = ProjectRequestParameters.DateField.CREATED_DATE;
         projectRequestParameters.parentEntity = "company";
         projectRequestParameters.entityIds.add(previousInvoice.getCompany().getCompanyId());
         projectRequestParameters.batchOffset = 0;
@@ -95,8 +112,8 @@ public class InvoiceFacadeREST extends AbstractFacade<Invoice> {
         projectRequestParameters.isDeleted = false;
 
         ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-        List<Project> projects = projectFacadeREST.loadProjects(projectRequestParameters);
-
+        //List<Project> projects2 = projectFacadeREST.loadProjects(projectRequestParameters);
+        List<Project> projects = projectFacadeREST.loadInvoiceProjects(projectRequestParameters);
         // Sorter stigende dato
         Collections.sort(projects, (Project o2, Project o1) -> o2.getCreatedDate().compareTo(o1.getCreatedDate()));
 
@@ -108,6 +125,7 @@ public class InvoiceFacadeREST extends AbstractFacade<Invoice> {
             if (!isEnded) {
                 double projectPoints = project.calculatePoints();
                 pointCounter = pointCounter + projectPoints;
+                //System.out.println("pointCounter = " + pointCounter );
             }
             if (pointCounter >= previousInvoice.getPointLimit()) {
                 if (!isEnded){

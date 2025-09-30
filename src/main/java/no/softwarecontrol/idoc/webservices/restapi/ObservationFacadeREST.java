@@ -18,7 +18,10 @@ import no.softwarecontrol.idoc.data.entityhelper.TgCounter;
 import no.softwarecontrol.idoc.data.entityhelper.UserRoleParameter;
 import no.softwarecontrol.idoc.data.entityobject.*;
 import no.softwarecontrol.idoc.data.requestparams.ObservationRequestParameters;
+import no.softwarecontrol.idoc.data.requestparams.PopupSortMode;
 import no.softwarecontrol.idoc.restclient.ObservationClient;
+import no.softwarecontrol.idoc.webservices.data.requestdata.ObservationImage;
+import no.softwarecontrol.idoc.webservices.exception.UnsupportedMediaException;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
 import org.joda.time.DateTime;
 import org.joda.time.Interval;
@@ -59,7 +62,6 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("createWithProject/{projectId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithProject(@PathParam("projectId") String projectId, Observation entity) {
-        System.out.println("ObservationFacadeRest.createWithProject: Oppretter observasjon: " + entity.getObservationId());
         ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
         Observation existingObservation = this.find(entity.getObservationId());
 
@@ -83,7 +85,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                         System.out.println("ObservationFacadeRest.createWithProject: Her skjer det ein feil med equipment");
                     }
                 }
-                projectFacadeREST.edit(project);
+                projectFacadeREST.editProjectOnly(project.getProjectId(),project);
             }
         }
     }
@@ -112,14 +114,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 equipmentId = entity.getEquipment().getEquipmentId();
             }
             EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
-            if (equipmentId != null) {
-                Equipment equipment = equipmentFacadeREST.findNative(equipmentId);
-                if (equipment != null) {
-                    entity.setEquipment(equipment);
-                } else {
-                    throw new Exception("Equipment not yet synchronized - Throw ERROR");
-                }
-            }
+
 
             // Check if location is created
             if (entity.getLocation() != null) {
@@ -128,7 +123,21 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 if (existingLocation != null) {
                     entity.setLocation(existingLocation);
                 } else {
-                    throw new Exception("Location not yet synchronized - Throw ERROR");
+                    throw new UnsupportedMediaException("Location not yet synchronized");
+                }
+            }
+
+            if (equipmentId != null) {
+                Equipment equipment = equipmentFacadeREST.findNative(equipmentId);
+                if (equipment != null) {
+                    entity.setEquipment(equipment);
+                    if(entity.getLocation() == null && equipment.getLocation() != null) {
+                        System.out.println("CREATE: Observation has lost location, but equipment has location");
+                        System.out.println("---------------------------------------------------------");
+                        entity.setLocation(equipment.getLocation());
+                    }
+                } else {
+                    throw new UnsupportedMediaException("Equipment not yet synchronized");
                 }
             }
 
@@ -143,18 +152,30 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
 
             ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
             Project project = projectFacadeREST.find(projectId);
-            entity.setProject(project);
+            if(project != null) {
+                entity.setProject(project);
+            } else {
+                throw new UnsupportedMediaException("Project not yet synchronized");
+            }
+
             //int observationCount = findProjectObservationsNative(project.getProjectId()).size();
             //entity.setObservationNo(observationCount + 1);
 //            if (!project.getObservationList().contains(entity)) {
 //                project.getObservationList().add(entity);
 //            }
+            for(ObservationLanguage observationLanguage : entity.getObservationLanguageList()) {
+                observationLanguage.setObservation(entity);
+            }
 
             entity.getMeasurementList().clear();
+            entity.getImageList().clear();
             if (entity.getProject() != null) {
                 super.create(entity);
 
                 for (Measurement measurement : measurements) {
+                    for(MeasurementLanguage measurementLanguage: measurement.getMeasurementLanguageList()) {
+                        measurementLanguage.setMeasurement(measurement);
+                    }
                     // Check if measurement already exists
                     Measurement existing = measurementFacadeREST.find(measurement.getMeasurementId());
                     if (existing == null) {
@@ -167,7 +188,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
 
             }
         } else {
-            System.out.println("Observasjonen er opprettet fra før...?");
+            System.out.println("Observasjonen er opprettet fra før: ID = " + entity.getObservationId());
             String locationId = "-1";
             if (entity.getLocation() != null) {
                 locationId = entity.getLocation().getLocationId();
@@ -182,6 +203,20 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             }
             edit(entity.getObservationId(), locationId, quickChoiceItemId, equipmentId, entity);
         }
+    }
+
+    @POST
+    @Path("createWithImage/{projectId}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public void createWithImage(@PathParam("projectId") String projectId, ObservationImage entity) throws Exception {
+        Observation observation = entity.getObservation();
+        observation.getImageList().clear();
+        Media media = entity.getMedia();
+
+        createWithProject2(projectId, observation);
+
+        ImageFacadeREST imageFacadeREST = new ImageFacadeREST();
+        imageFacadeREST.createWithObservation(observation.getObservationId(), media);
     }
 
 //    private void createNative(Observation observation) {
@@ -264,7 +299,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                             @PathParam("equipmentId") String equipmentId,
                             Observation entity) {
         LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
-        System.out.println("Lagresr observasjon ID: " + entity.getObservationId());
+        System.out.println("Lagrer observasjon ID: " + entity.getObservationId());
         QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
         EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
 
@@ -326,7 +361,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
 
         } else {
             try {
-                throw new Exception("Merkelig fenomen... Denne observasjonen eksisterer ikke");
+                throw new UnsupportedMediaException("Merkelig fenomen... Denne observasjonen eksisterer ikke");
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -372,15 +407,14 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     public void edit(@PathParam("id") String id,
                      @PathParam("locationId") String locationId,
                      @PathParam("quickChoiceItemId") String quickChoiceItemId,
-                     @PathParam("equipmentId") String equipmentId,
+                      @PathParam("equipmentId") String equipmentId,
                      Observation entity) {
         DateTime start = new DateTime(new Date());
-//        System.out.println("Start saving observation no " + entity.getObservationNo() + ".... ");
-//        System.out.println("============================ ");
 
         LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
         QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
         EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
+        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
 
         Observation observation = this.find(id);
         if (observation != null) {
@@ -389,7 +423,9 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                     observation.getIntegrationList().add(integration);
                 }
             }
-
+            for(ObservationLanguage observationLanguage : entity.getObservationLanguageList()) {
+                observationLanguage.setObservation(observation);
+            }
 
             observation.setDescription(entity.getDescription());
             observation.setDeviation(entity.getDeviation());
@@ -411,11 +447,16 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             observation.setPerformingUserId(entity.getPerformingUserId());
             observation.setPerformingDate(entity.getPerformingDate());
             observation.setAlternativeLocation(entity.getAlternativeLocation());
+            observation.setObservationLanguageList(entity.getObservationLanguageList());
 
             if (entity.getModifiedDate() != null) {
                 observation.setModifiedDate(entity.getModifiedDate());
             } else {
                 observation.setModifiedDate(new Date());
+            }
+            if(entity.getOldProjectId() != null) {
+                Project oldProject = projectFacadeREST.findNative(entity.getOldProjectId());
+                observation.setOldProject(oldProject);
             }
             if (!quickChoiceItemId.isEmpty()) {
                 QuickChoiceItem quickChoiceItem = quickChoiceItemFacadeREST.find(quickChoiceItemId);
@@ -423,31 +464,24 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                     observation.setQuickChoiceItem(quickChoiceItem);
                 }
             }
-            if (!equipmentId.isEmpty()) {
-                Equipment equipment = equipmentFacadeREST.find(equipmentId);
-                if (equipment != null) {
-                    observation.setEquipment(equipment);
-                    /*if (!equipment.getObservationList().contains(equipment)) {
-                        equipment.getObservationList().add(observation);
-                    }*/
-                } else {
-                    if (entity.getEquipment() == null) {
-                        //observation.setEquipment(null);
-                    }
-                }
-            }
+
             if (!locationId.isEmpty()) {
                 Location location = locationFacadeREST.find(locationId);
                 if (location != null) {
                     observation.setLocation(location);
-                    if (!location.getObservationList().contains(observation)) {
-                        location.getObservationList().add(observation);
-                    }
-                } else {
-                    //System.out.println("Location is missing!!!" + locationId);
                 }
             }
-            //observation.setMeasurementList(measurements);
+            if (!equipmentId.isEmpty()) {
+                Equipment equipment = equipmentFacadeREST.find(equipmentId);
+                if (equipment != null) {
+                    observation.setEquipment(equipment);
+                    if(observation.getLocation() == null && equipment.getLocation() != null) {
+                        System.out.println("EDIT: Observation has lost location, but equipment has location");
+                        System.out.println("---------------------------------------------------------");
+                        observation.setLocation(equipment.getLocation());
+                    }
+                }
+            }
             try {
                 super.edit(observation);
 
@@ -478,7 +512,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
 
         } else {
             try {
-                throw new Exception("Merkelig fenomen... Denne observasjonen eksisterer ikke. Mulig at kontrollen ikke er ferdig opprettet");
+                throw new UnsupportedMediaException("Merkelig fenomen... Denne observasjonen eksisterer ikke. Mulig at kontrollen ikke er ferdig opprettet");
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -505,6 +539,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
         QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
         EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
+        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
 
         Observation observation = this.find(id);
         if (observation != null) {
@@ -551,6 +586,10 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             observation.setPerformingUserId(entity.getPerformingUserId());
             observation.setPerformingDate(entity.getPerformingDate());
             observation.setAlternativeLocation(entity.getAlternativeLocation());
+            if(entity.getOldProjectId() != null) {
+                Project oldProject = projectFacadeREST.findNative(entity.getOldProjectId());
+                observation.setOldProject(oldProject);
+            }
 
             if (!quickChoiceItemId.isEmpty()) {
                 QuickChoiceItem quickChoiceItem = quickChoiceItemFacadeREST.find(quickChoiceItemId);
@@ -582,6 +621,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                     //System.out.println("Location is missing!!!" + locationId);
                 }
             }
+
             //observation.setMeasurementList(measurements);
             try {
                 super.edit(observation);
@@ -592,7 +632,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         } else {
             Logger.getLogger(ObservationClient.class.getName()).log(Level.INFO, "Merkelig fenomen... Denne observasjonen eksisterer ikke: observationId = " + id);
             try {
-                throw new Exception("Merkelig fenomen... Denne observasjonen eksisterer ikke");
+                throw new UnsupportedMediaException("Merkelig fenomen... Denne observasjonen eksisterer ikke");
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -719,6 +759,11 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 observation.setLocationString(observation.getLocation().getFullName());
                 observation.setLocationId(observation.getLocation().getLocationId());
             }
+            if(observation.getOldProject() != null) {
+                observation.setOldProjectId(observation.getOldProject().getProjectId());
+                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+                observation.setOldProject(null);
+            }
             return observation;
         }
         em.close();
@@ -757,6 +802,11 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             if (observation.getEquipment() != null) {
                 observation.setEquipmentId(observation.getEquipment().getEquipmentId());
             }
+            if(observation.getOldProject() != null) {
+                observation.setOldProjectId(observation.getOldProject().getProjectId());
+                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+                observation.setOldProject(null);
+            }
             observation.setEquipmentId(null);
             if (observation.getOldProject() != null) {
                 observation.setOldProjectId(observation.getOldProject().getProjectId());
@@ -766,6 +816,29 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
 
         return observations;
     }
+
+    @GET
+    @Path("loadTitleGroups/{projectId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<String> loadTitleGroups(@PathParam("projectId") String projectId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
+                                + "* FROM observation o\n"
+                                + "WHERE o.project = ?1\n"
+                                + "GROUP BY o.title\n",
+                        Observation.class)
+                .setParameter(1, projectId)
+                .getResultList();
+        em.close();
+        List<String> groups = new ArrayList<>();
+        for(Observation observation: resultList) {
+            if(!observation.getTitle().isEmpty()) {
+                groups.add(observation.getTitle());
+            }
+        }
+        return groups;
+    }
+
 
     @GET
     @Path("loadByProject/{projectId}")
@@ -783,6 +856,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         return filteredObservations;
     }
 
+    @Deprecated
     @GET
     @Path("loadByProjectOptimized/{projectId}")
     @Produces({MediaType.APPLICATION_JSON})
@@ -808,7 +882,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             if(observation.getOldProject() != null) {
                 observation.setOldProjectId(observation.getOldProject().getProjectId());
                 observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
-                //observation.setOldProject(null);
+                observation.setOldProject(null);
             }
             optimizedObservations.add(observation);
         }
@@ -965,6 +1039,33 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         }
         return resultList;
     }
+
+    @GET
+    @Path("loadByCheckListAnswerWithProject/{checkListAnswerId}/{projectId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Observation> loadByCheckListAnswerWithProject(@PathParam("checkListAnswerId") String checkListAnswerId,
+                                                        @PathParam("projectId") String projectId) {
+
+
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+
+        String sqlQuery = """
+                select o.* from observation o
+                    join iDocDatabase.answer_value av on o.observation_id = av.observation
+                    join check_list_answer cla on av.check_list_answer = cla.check_list_answer_id \n""";
+        sqlQuery +=  "where o.project = '" + projectId + "' and cla.check_list_answer_id = '" + checkListAnswerId +"' and o.deleted = 0";
+
+        List<Observation> resultList = (List<Observation>) em.createNativeQuery(sqlQuery,
+                        Observation.class)
+                .getResultList();
+        em.close();
+        for (Observation observation : resultList) {
+            optimizeObservation(observation);
+            //observation.setProjectId(observation.getProject().getProjectId());
+        }
+        return resultList;
+    }
+
     @PUT
     @Path("loadObservationsForCompany/{companyId}/{stateString}/{batchOffset}/{batchSize}")
     @Produces({MediaType.APPLICATION_JSON})
@@ -1271,6 +1372,9 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     }
 
     private String createSqlString(ObservationRequestParameters parameters, Boolean isCounting) {
+        if(parameters.entityIds.isEmpty()) {
+            parameters.entityIds.add("1");
+        }
         String sqlString = "";
         String selectString = "";
         String inTgString = "";
@@ -1285,6 +1389,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             selectString += "LEFT JOIN location l2 on l1.parent = l2.location_id\n";
             selectString += "LEFT JOIN location l3 on l2.parent = l3.location_id\n";
             selectString += "LEFT JOIN location l4 on l3.parent = l4.location_id\n";
+            selectString += "LEFT JOIN location l5 on l4.parent = l5.location_id\n";
             selectString += "LEFT JOIN equipment e on e.equipment_id = o.equipment\n";
             selectString += "LEFT JOIN equipment_type et on et.equipment_type_id = e.equipment_type\n";
         }
@@ -1303,33 +1408,52 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         if(!inTgString.isEmpty()) {
             whereString += inTgString;
         }
-        whereString += "o.project = " + projectId + " AND o.deleted = " + deletedFlag;
-        if(parameters.showOpenOnly) {
-            whereString += " AND o.observation_state = 0";
+        whereString += "(o.project = " + projectId + " or o.old_project = " + projectId + ") AND o.deleted = " + deletedFlag + " \n";
+        if(parameters.showOpenOnly && !isCounting) {
+            whereString += " AND o.observation_state = 0 \n";
         }
-        if(parameters.showImprovingOnly) {
-            whereString += " AND o.observation_state = 1";
+        if(parameters.showImprovingOnly && !isCounting) {
+            whereString += " AND o.observation_state = 1 \n";
         }
-        if(parameters.showOverdue) {
+        if(parameters.showOverdue && !isCounting) {
             Date today = new Date();
             SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
             dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
             String todayString = dateFormatter.format(today);
-            whereString += " AND o.observation_state = 0 AND o.improvement_deadline < '" + todayString + "'";
+            whereString += " AND o.observation_state = 0 AND o.improvement_deadline < '" + todayString + "' \n";
         }
-        if(isCounting) {
-            whereString += " AND o.deleted = 0";
+//        if(isCounting) {
+//            whereString += " AND o.deleted = 0 \n";
+//        }
+        if(!parameters.queryTitle.isEmpty() && !isCounting) {
+            whereString += "AND o.title like '" + parameters.queryTitle+ "' AND o.deviation > 0\n";
         }
-        if(!parameters.queryString.isEmpty()) {
+        if(!parameters.queryString.isEmpty() && !isCounting) {
             String query = parameters.queryString;
             whereString += " AND \n";
             whereString += " (concat(o.description, o.action, o.improvement) like '%" + query +"%'\n";
-            whereString += " OR concat(COALESCE(l4.name,''), COALESCE(l4.name,''), COALESCE(l2.name,''),COALESCE(l1.name,'')) like '%" + query +"%'\n";
+            whereString += " OR concat(COALESCE(l4.name,''), COALESCE(l3.name,''), COALESCE(l2.name,''),COALESCE(l1.name,'')) like '%" + query +"%'\n";
             whereString += " OR concat(COALESCE(e.name,''), COALESCE(e.tag_id,'')) like '%" + query +"%'\n";
             whereString += " OR concat(COALESCE(et.name,'')) like '%" + query +"%'\n)";
         }
-
-        sqlString = selectString + whereString;
+        var limitString = "";
+        if(!parameters.queryString.isEmpty() && !isCounting) {
+            limitString = " LIMIT 0,10 \n";
+        }
+        var orderByString = " ORDER BY observation_no \n";
+        if(parameters.sortMode.sortMode == PopupSortMode.SortMode.OBSERVATION_LOCATION && !isCounting) {
+            orderByString = " ORDER BY l5.name, l4.name, l3.name, l2.name, l1.name \n";
+        } else if (parameters.sortMode.sortMode == PopupSortMode.SortMode.OBSERVATION_EQUIPMENT && !isCounting) {
+            orderByString = " ORDER BY et.name, e.name, e.tag_id \n";
+        }
+        if(isCounting) {
+            limitString = " LIMIT 0,10 \n";
+        } else {
+            if (parameters.batchSize > 0) {
+                limitString = " LIMIT " + parameters.batchOffset + "," + parameters.batchSize + " ";
+            }
+        }
+        sqlString = selectString + whereString + orderByString + limitString;
         return sqlString;
     }
 
@@ -1340,7 +1464,8 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     public Integer countObservations(ObservationRequestParameters parameters) {
 
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        Query queryCounter = em.createNativeQuery(createSqlString(parameters, true));
+        String sql = createSqlString(parameters, true);
+        Query queryCounter = em.createNativeQuery(sql);
 
         Number counterUnassigned = (Number) queryCounter.getSingleResult();
         Integer integerCounter = Integer.parseInt(counterUnassigned.toString());
@@ -1350,7 +1475,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     }
 
     @PUT
-    @Path("loadProjectObservations/")
+    @Path("loadProjectObservations")
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
     public List<Observation> loadProjectObservations(ObservationRequestParameters parameters) {
@@ -1375,10 +1500,17 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             if(observation.getProject() != null) {
                 observation.setProjectNumber(observation.getProject().getProjectNumber());
             }
+            if(observation.getOldProject() != null) {
+                observation.setOldProjectId(observation.getOldProject().getProjectId());
+                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+            }
             if(observation.getQuickChoiceItem() != null) {
                 observation.setQuickChoiceItem(null);
             }
             if(!observation.getMeasurementList().isEmpty()) {
+                List<Measurement> activeMeasurements = observation.getMeasurementList().stream().filter(r -> !r.getDeleted()).collect(Collectors.toList());
+                observation.setMeasurementCount(activeMeasurements.size());
+
                 List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
                 if(!statusMeasurements.isEmpty()) {
                     observation.getMeasurementList().clear();
@@ -1388,10 +1520,78 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 } else {
                     observation.getMeasurementList().clear();
                 }
+
+            }
+            if(!observation.getImageList().isEmpty()) {
+                List<Media> activeImages = observation.getImageList().stream().filter(r -> !r.isDeleted()).collect(Collectors.toList());
+                observation.setImageCount(activeImages.size());
             }
         }
         return resultList;
     }
+
+    @PUT
+    @Path("loadProjectObservationsOptimized")
+    @Consumes({MediaType.APPLICATION_JSON})
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<Observation> loadProjectObservationsOptimized(ObservationRequestParameters parameters) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        String queryString = createSqlString(parameters, false);
+        List<Observation> resultList = em.createNativeQuery(queryString, Observation.class)
+                .getResultList();
+        for(Observation observation: resultList) {
+            if(observation.getEquipment() != null) {
+                observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+                observation.setEquipmentString(observation.getEquipment().getFullName());
+                if(observation.getEquipment().getTagId() != null) {
+                    observation.setEquipmentTagId(observation.getEquipment().getTagId());
+                }
+                observation.setEquipment(null);
+            }
+            if(observation.getLocation() != null) {
+                observation.setLocationId(observation.getLocation().getLocationId());
+                observation.setLocationString(observation.getLocation().getFullName());
+                observation.setLocation(null);
+            }
+            if(observation.getProject() != null) {
+                observation.setProjectNumber(observation.getProject().getProjectNumber());
+            }
+            if(observation.getOldProject() != null) {
+                observation.setOldProjectId(observation.getOldProject().getProjectId());
+                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+            }
+            if(observation.getQuickChoiceItem() != null) {
+                observation.setQuickChoiceItem(null);
+            }
+            if(!observation.getMeasurementList().isEmpty()) {
+                List<Measurement> activeMeasurements = observation.getMeasurementList().stream().filter(r -> !r.getDeleted()).collect(Collectors.toList());
+                observation.setMeasurementCount(activeMeasurements.size());
+
+                List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
+                if(!statusMeasurements.isEmpty()) {
+                    observation.getMeasurementList().clear();
+                    observation.getMeasurementList().addAll(statusMeasurements);
+                    observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
+                    observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
+                } else {
+                    observation.getMeasurementList().clear();
+                }
+
+            }
+            if(!observation.getImageList().isEmpty()) {
+                List<Media> activeImages = observation.getImageList().stream().filter(r -> !r.isDeleted()).collect(Collectors.toList());
+                observation.setImageCount(activeImages.size());
+            }
+            if(observation.getOldProject() != null) {
+                observation.setOldProjectId(observation.getOldProject().getProjectId());
+                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+                observation.setOldProject(null);
+            }
+        }
+        return resultList;
+    }
+
+
 
     @PUT
     @Path("countProjectObservations/")
@@ -1417,6 +1617,23 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         em.close();
         return observationCounters;
     }
+
+/*    private Query createCounterSqlQuery(EntityManager em) {
+        Query queryTG = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
+                        "JOIN project p ON p.project_id = o.project\n" +
+                        "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                        " WHERE " +
+                        "   chp.company_company_id = ?1 AND " +
+                        "   o.deleted = ?2 AND p.deleted = 0 AND o.deviation = ?4 AND " + showOpenOnlySql +
+                        "   o.created_date > ?5 AND " +
+                        "   o.created_date < ?6")
+
+                .setParameter(1, companyId)
+                .setParameter(2, false)
+                .setParameter(4, i)
+                .setParameter(5, strFromDate)
+                .setParameter(6, strToDate);
+    }*/
 
     @PUT
     @Path("countCompanyDeviations")
@@ -1644,7 +1861,6 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                                 "   chp.company_company_id = ?1 AND " +
                                 "   o.project = ?2 AND " +
                                 "   o.deleted = 0 AND " +
-                                "   p.deleted = 0 AND " +
                                 "   o.deviation = ?3 AND " +
                                 showOpenOnlySql +
                                 "   o.created_date > ?4 AND " +
@@ -1843,9 +2059,9 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     }
 
     @GET
-    @Path("resetRenew/{observationId}")
+    @Path("resetRenew/{observationId}/{oldProjectId}")
     //@Produces({MediaType.APPLICATION_JSON})
-    public void resetRenew(@PathParam("observationId") String observationId) {
+    public void resetRenew(@PathParam("observationId") String observationId, @PathParam("oldProjectId") String oldProjectId) {
 
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
         EntityTransaction tx = em.getTransaction();
@@ -1853,13 +2069,17 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             tx.begin();
             Observation observation = findNative(observationId);
             if(observation != null) {
-                if(observation.getOldProject() != null) {
-                    final int i = em.createNativeQuery(
-                                    "UPDATE observation SET project = ?, old_project = NULL \n" +
-                                            "WHERE (observation_id = ?);"
-                            ).setParameter(1, observation.getOldProject().getProjectId())
-                            .setParameter(2, observationId)
-                            .executeUpdate();
+                if(observation.getOldProjectId() != null) {
+                    ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
+                    Project oldProject = projectFacadeREST.findNative(oldProjectId);
+                    if (oldProject != null) {
+                        final int i = em.createNativeQuery(
+                                        "UPDATE observation SET project = ?, old_project = NULL \n" +
+                                                "WHERE (observation_id = ?);"
+                                ).setParameter(1, oldProject.getProjectId())
+                                .setParameter(2, observationId)
+                                .executeUpdate();
+                    }
                 }
             }
             tx.commit();
@@ -1868,6 +2088,5 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         } finally {
             em.close();
         }
-
     }
 }

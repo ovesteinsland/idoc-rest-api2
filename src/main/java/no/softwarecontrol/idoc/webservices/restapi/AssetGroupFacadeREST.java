@@ -7,11 +7,13 @@ package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ejb.Stateless;
+import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityobject.Asset;
 import no.softwarecontrol.idoc.data.entityobject.AssetGroup;
 import no.softwarecontrol.idoc.data.entityobject.Company;
+import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +43,27 @@ public class AssetGroupFacadeREST extends AbstractFacade<AssetGroup> {
         super.create(entity);
     }
 
+
+    @GET
+    @Path("loadByOwner/{ownerId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<AssetGroup> loadByOwner(@PathParam("ownerId") String ownerId) {
+
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<AssetGroup> resultList = (List<AssetGroup>) em.createNativeQuery("SELECT * \n"
+                                + " FROM asset_group ag\n "
+                                + " join company_has_asset_group chag on chag.asset_group_asset_group_id = ag.asset_group_id\n"
+                                + " WHERE chag.company_company_id = ?1 ",
+                        AssetGroup.class)
+                .setParameter(1, ownerId)
+                .getResultList();
+        em.close();
+        for(AssetGroup assetGroup : resultList) {
+            assetGroup.setAssetList(new ArrayList<>());
+            assetGroup.setCompanyList(new ArrayList<>());
+        }
+        return resultList;
+    }
     /*@PUT
     @Path("linkToCompanyAssetType/{companyId}/{assetTypeId}")
     @Consumes({MediaType.APPLICATION_JSON})

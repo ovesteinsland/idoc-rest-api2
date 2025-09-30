@@ -6,6 +6,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityobject.*;
+import no.softwarecontrol.idoc.webservices.exception.UnsupportedMediaException;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
 
 import java.util.ArrayList;
@@ -53,7 +54,7 @@ public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
                 edit(entity);
             }
         } catch (Exception e) {
-            throw new Exception("Create answerValue: Observation not yet created - Throw ERROR");
+            throw new UnsupportedMediaException("Create answerValue: Observation not yet created - Throw ERROR");
         }
     }
 
@@ -72,7 +73,7 @@ public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
                 entity.setObservation(observation);
             } else {
                 //System.out.println("Create answerValue: Observation not yet created...");
-                throw new Exception("Create answerValue: Observation not yet created - Throw ERROR");
+                throw new UnsupportedMediaException("Create answerValue: Observation not yet created - Throw ERROR");
 
             }
         }
@@ -100,7 +101,7 @@ public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
         try {
             create(checkListAnswerId, projectId, null, entity);
         } catch (Exception e) {
-            throw new Exception("Create answerValue: Observation not yet created - Throw ERROR");
+            throw new UnsupportedMediaException("Error creating answerValue: UNKNOWN REASON");
         }
     }
 

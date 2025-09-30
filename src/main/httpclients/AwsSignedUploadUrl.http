@@ -1,0 +1,32 @@
+@baseUrl = http://localhost:8080/idoc_rest_api2_war/iDocWebServices/webresources/aws.s3.storage/
+@contentType = text/plain
+@key = dev/test-http-client.txt
+@expires = 600
+
+### @name presignUpload
+POST {{baseUrl}}upload
+Content-Type: application/json
+Authorization: Basic QXBwbGljYXRpb25Vc2VyOkloYWR0aGlzdGhpbmc5Njk5MDY=
+
+{
+  "key": "{{key}}",
+  "contentType": "{{contentType}}",
+  "expiresInSeconds": {{expires}}
+}
+
+> {%
+    // Lagre URL globalt for neste request
+    const data = JSON.parse(response.body);
+    if (!data || !data.url) {
+        throw new Error("Manglende 'url' i responsen fra presign-endepunktet");
+    }
+    client.global.set("uploadUrl", data.url);
+    client.global.set("uploadContentType", request.variables.get("contentType"));
+%}
+
+### uploadWithPresignedUrl
+// Kjør "Run All Requests" (øverste play-knapp), eller kjør denne rett etter at forrige har kjørt OK
+PUT {{uploadUrl}}
+Content-Type: {{uploadContentType}}
+
+Hello from IntelliJ HTTP Client!

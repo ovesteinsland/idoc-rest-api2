@@ -5,14 +5,13 @@
  */
 package no.softwarecontrol.idoc.webservices.restapi;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
 import jakarta.persistence.Query;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import no.softwarecontrol.idoc.data.entityhelper.*;
 import no.softwarecontrol.idoc.data.entityjson.ProjectLite;
 import no.softwarecontrol.idoc.data.entityobject.*;
@@ -44,56 +43,15 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         return "Project.findAll";
     }
 
-
-    @POST
-    @Override
-    @Consumes({MediaType.APPLICATION_JSON})
-    public void create(Project entity) {
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        Project existing = find(entity.getProjectId());
-        if (existing == null) {
-            for (Project child : entity.getProjectList()) {
-                child.setCreatedDate(new Date());
-                child.setModifiedDate(new Date());
-                if (child.getStartDate() == null) {
-                    child.setStartDate(new Date());
-                }
-                child.setParent(entity);
-                if (child.getAsset() != null) {
-                    child.setParent(entity);
-                    if (child.getAsset() != null) {
-                        Asset existingAsset = assetFacadeREST.find(child.getAsset().getAssetId());
-                        if (existingAsset != null) {
-                            child.setAsset(existingAsset);
-                            if (!existingAsset.getProjectList().contains(child)) {
-                                existingAsset.getProjectList().add(child);
-                            }
-                        }
-                    }
-                }
-            }
-            entity.setCreatedDate(new Date());
-            entity.setModifiedDate(new Date());
-            if (entity.getStartDate() == null) {
-                entity.setStartDate(new Date());
-            }
-            if (entity.getCreatedCompany() != null) {
-                if (!entity.getCreatedCompany().isEmpty()) {
-                    CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-                    ProjectNumber projectNumber = companyFacadeREST.incrementProjectCounter(entity.getCreatedCompany());
-                    entity.setProjectNumber(projectNumber.getProjectCounter());
-                }
-            }
-            super.create(entity);
-            for (Project child : entity.getProjectList()) {
-                if (child.getAsset() != null) {
-                    assetFacadeREST.edit(child.getAsset());
-                }
-            }
-            //this.edit(entity);
-        }
-    }
-
+//    @OPTIONS
+//    @Path("{path : .*}") // Match alle stier
+//    public Response options() {
+//        return Response.ok()
+//                .header("Access-Control-Allow-Origin", "http://localhost:8181")
+//                .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
+//                .header("Access-Control-Allow-Headers", "origin, content-type, accept, authorization")
+//                .build();
+//    }
 
     /**
      * createStack is a new api for creating project. No need for linking users and companies after creation
@@ -124,7 +82,11 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         project.setProjectState(0);
         project.setGrouped(Boolean.TRUE);
         project.setCreatedCompany(authorityId);
-        create(project);
+        project.authorityId = authorityId;
+        createProject(project);
+
+        //ProjectNumber projectNumber = companyFacadeREST.incrementProjectCounter(authorityId);
+        //project.setProjectNumber(projectNumber.getProjectCounter());
 
         linkToCompany(authorityId, project);
         linkToCompany(customerId, project);
@@ -159,6 +121,8 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         project.setDeleted(false);
         project.setDisipline(disipline);
         project.setCreatedCompany(authorityId);
+        project.setCreatedDate(new Date());
+        project.setModifiedDate(new Date());
         if (assetIds.size() == 1) {
             String assetId = assetIds.get(0);
             Asset asset = assetFacadeREST.find(assetId);
@@ -180,6 +144,8 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
                 child.setDisipline(disipline);
                 child.setGrouped(false);
                 child.setCreatedCompany(authorityId);
+                child.setCreatedDate(new Date());
+                child.setModifiedDate(new Date());
                 project.getProjectList().add(child);
             }
         }
@@ -193,10 +159,11 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
      * @param entity @see no.softwarecontrol.idoc.data.entityhelper.ProjectParameter
      * @summary Create Project with Parameters
      */
+    @Deprecated
     @POST
     @Path("createWithParameters")
     @Consumes({MediaType.APPLICATION_JSON})
-    public void createWithParameters(ProjectParameters entity) {
+    public Integer createWithParameters(ProjectParameters entity) {
 
         AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
         CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
@@ -204,12 +171,10 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
 
         // Check if project exists
         Project project = entity.getProject();
-        Project existingProject = find(project.getProjectId());
+        Project existingProject = findNative(project.getProjectId());
         Asset asset = assetFacadeREST.find(entity.getAssetId());
-        Company authority = companyFacadeREST.findNative(entity.getAuthorityId());
-        Company customer = companyFacadeREST.findNative(entity.getCustomerId());
         Disipline disipline = disiplineFacadeREST.find(entity.getDisiplineId());
-
+        List<String> userIds = entity.getUserIdList();
         // Verify that all users are stored in the database
         List<User> existingUsers = new ArrayList<User>();
         UserFacadeREST userFacadeREST = new UserFacadeREST();
@@ -232,23 +197,31 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             ProjectNumber projectNumber = companyFacadeREST.incrementProjectCounter(entity.getAuthorityId());
             project.setProjectNumber(projectNumber.getProjectCounter());
 
-            List<Project> existingChildren = new ArrayList<>();
-            for (Project child : project.getProjectList()) {
-                child.setParent(project);
-                if (find(child.getProjectId()) != null) {
-                    existingChildren.add(child);
-                }
-            }
-            for (Project child : existingChildren) {
-                project.getProjectList().remove(child);
+            List<Project> children = new ArrayList<>(project.getProjectList());
+            project.getProjectList().clear();
+
+            System.out.println("Setting user roles for project " + project.getProjectId());
+            System.out.println("============================================");
+            for (UserRole userRole : project.getUserRoleList()) {
+                System.out.println("Setting user role: " + userRole.getUserRoleId());
+                userRole.setProject(project);
             }
 
-            if (!existingChildren.isEmpty()) {
-                for (Project child : existingChildren) {
-                    project.getProjectList().add(child);
+            super.create(project);
+
+            List<Project> existingChildren = new ArrayList<>();
+            List<Project> missingChildren = new ArrayList<>();
+            for (Project child : children) {
+                child.setParent(project);
+                if (findNative(child.getProjectId()) != null) {
+                    existingChildren.add(child);
+                    editProjectOnly(child.getProjectId(), child);
+                } else {
+                    missingChildren.add(child);
                 }
             }
-            for (Project child : project.getProjectList()) {
+
+            for (Project child : missingChildren) {
                 child.setCreatedDate(new Date());
                 child.setModifiedDate(new Date());
                 child.setParent(project);
@@ -257,21 +230,30 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
                 if (child.getDisipline() == null) {
                     child.setDisipline(project.getDisipline());
                 }
-                if (child.getAsset() != null) {
+                if (child.getAsset() != null) { // Verbose payload where asset is included. OLD
                     Asset existingAsset = assetFacadeREST.find(child.getAsset().getAssetId());
                     if (existingAsset != null) {
                         child.setAsset(existingAsset);
                     }
+                } else { // Light payload where asset is removed. NEW & IMPROVED
+                    Asset existingAsset = assetFacadeREST.find(child.assetId);
+                    if (existingAsset != null) {
+                        child.setAsset(existingAsset);
+                    }
                 }
+                super.create(child);
             }
 
             for (Project child : project.getProjectList()) {
                 child.getUserList().clear();
             }
-            for (UserRole userRole : project.getUserRoleList()) {
-                userRole.setProject(project);
-            }
-            super.create(project);
+//            System.out.println("Setting user roles for project " + project.getProjectId());
+//            System.out.println("============================================");
+//            for (UserRole userRole : project.getUserRoleList()) {
+//                System.out.println("Setting user role: " + userRole.getUserRoleId());
+//                userRole.setProject(project);
+//            }
+
 
 //            List<User> users = new ArrayList<>(project.getUserList());
 //            project.getUserList().clear();
@@ -296,8 +278,125 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         } else {
             System.out.println("Prosjektet eksisterer fra før.......????!!");
         }
+        return project.getProjectNumber();
     }
 
+    @POST
+    @Path("create")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public Integer createProject(Project entity) {
+        Integer projectNum = 0;
+        // Check if some of the children exists, due to merging of project on client or something
+        List<Project> existingChildren = new ArrayList<>();
+        for (Project child : entity.getProjectList()) {
+            Project existingChild = findNative(child.getProjectId());
+            if (existingChild != null) {
+                existingChildren.add(existingChild);
+            }
+        }
+
+        // Remove exisiting children from creating entity
+        for (Project existingChild : existingChildren) {
+            List<Project> filteredChildren = entity.getProjectList().stream().filter(r -> r.getProjectId().equalsIgnoreCase(existingChild.getProjectId())).collect(Collectors.toList());
+            for (Project filteredChild : filteredChildren) {
+                entity.getProjectList().remove(filteredChild);
+            }
+        }
+
+        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
+        ProjectNumber projectNumber = companyFacadeREST.incrementProjectCounter(entity.authorityId);
+        entity.setProjectNumber(projectNumber.getProjectCounter());
+        projectNum = projectNumber.getProjectCounter();
+
+        DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
+        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
+
+        Disipline disipline = disiplineFacadeREST.find(entity.disiplineId);
+
+        if (disipline != null) {
+            entity.setDisipline(disipline);
+        }
+        if (entity.assetId != null) {
+            Asset asset = assetFacadeREST.find(entity.assetId);
+            if (asset != null) {
+                entity.setAsset(asset);
+            }
+        }
+
+        entity.setCreatedDate(new Date());
+        entity.setModifiedDate(new Date());
+        for (Project child : entity.getProjectList()) {
+            child.setParent(entity);
+            child.parentId = entity.getProjectId();
+            ProjectNumber pn = companyFacadeREST.incrementProjectCounter(entity.authorityId);
+            child.setProjectNumber(pn.getProjectCounter());
+            child.setCreatedDate(new Date());
+            child.setModifiedDate(new Date());
+            Disipline childDisipline = disiplineFacadeREST.find(child.disiplineId);
+            if (childDisipline != null) {
+                child.setDisipline(childDisipline);
+            }
+            if (entity.assetId != null) {
+                Asset asset = assetFacadeREST.find(child.assetId);
+                if (asset != null) {
+                    child.setAsset(asset);
+                }
+            }
+        }
+        super.create(entity);
+
+        for (Project existingChild : existingChildren) {
+            existingChild.setParent(entity);
+            edit(existingChild);
+        }
+        // Link project to companies & users
+        linkCompanySimple(entity.authorityId, entity.getProjectId());
+        linkCompanySimple(entity.getCustomerId(), entity.getProjectId());
+        for (User user : entity.getUserList()) {
+            linkToUser(user.getUserId(), entity);
+        }
+        for (Project child : entity.getProjectList()) {
+            linkCompanySimple(child.getCreatedCompany(), child.getProjectId());
+            linkCompanySimple(child.getCustomerId(), child.getProjectId());
+            for (User user : entity.getUserList()) {
+                linkToUser(user.getUserId(), child);
+            }
+        }
+        System.out.println("Project inserted... " + entity.getProjectId());
+        return projectNum;
+    }
+
+    private int prepareCreateProject(Project project) {
+        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
+        DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
+
+        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
+        ProjectNumber projectNumber = companyFacadeREST.incrementProjectCounter(project.authorityId);
+        project.setProjectNumber(projectNumber.getProjectCounter());
+        if (!project.assetId.isEmpty()) {
+            Asset asset = assetFacadeREST.find(project.assetId);
+            project.setAsset(asset);
+        }
+        if (!project.disiplineId.isEmpty()) {
+            Disipline disipline = disiplineFacadeREST.find(project.disiplineId);
+            project.setDisipline(disipline);
+        }
+        // Verify that all users are stored in the database
+        List<User> existingUsers = new ArrayList<>();
+        UserFacadeREST userFacadeREST = new UserFacadeREST();
+        for (User incomingUser : project.getUserList()) {
+            User existingUser = userFacadeREST.find(incomingUser.getUserId());
+            if (existingUser == null) {
+                userFacadeREST.create(incomingUser);
+            }
+        }
+        for (UserRole userRole : project.getUserRoleList()) {
+            userRole.setProject(project);
+        }
+
+
+        return 1;
+    }
 
     public void linkUser(String userId, Project entity) {
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
@@ -583,8 +682,9 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
     @Path("editProjectOnly/{id}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void editProjectOnly(@PathParam("id") String id, Project entity) {
-        Project project = this.findNative(id);
+        Project project = this.findNative(entity.getProjectId());
         if (project != null) {
+
             project.setDeleted(entity.isDeleted());
             if (entity.getCreatedCompany() != null) {
                 project.setCreatedCompany(entity.getCreatedCompany());
@@ -592,16 +692,19 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
 
             project.setModifiedDate(new Date());
             project.setModifiedUser(entity.getModifiedUser());
-
             project.setName(entity.getName());
             project.setOrderNo(entity.getOrderNo());
+            project.setCustomerName(entity.getCustomerName());
+            project.setCustomerContactPerson(entity.getCustomerContactPerson());
+            project.setCustomerContactEmail(entity.getCustomerContactEmail());
             project.setCustomerRef(entity.getCustomerRef());
             project.setFreeText(entity.getFreeText());
             project.setProjectState(entity.getProjectState());
-            if(entity.getScheduledStartDate() != null) {
+            project.setLanguageCode(entity.getLanguageCode());
+            if (entity.getScheduledStartDate() != null) {
                 project.setScheduledStartDate(entity.getScheduledStartDate());
             }
-            if(entity.getScheduledEndDate() != null) {
+            if (entity.getScheduledEndDate() != null) {
                 project.setScheduledEndDate(entity.getScheduledEndDate());
             }
             if (entity.getProjectNumber() == 0) {
@@ -616,12 +719,28 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             if (entity.getEndDate() != null) {
                 project.setEndDate(entity.getEndDate());
             }
+
             project.setRecurring(entity.getRecurring());
             project.setDurationText(entity.getDurationText());
 
             project.setIntegrationList(entity.getIntegrationList());
-            // Check if disipline has been changed
 
+            // check if parent is present
+            if (entity.parentId != null) {
+                Project parent = find(entity.parentId);
+                if (parent != null) {
+                    project.setParent(parent);
+                }
+            }
+
+            if (entity.disiplineId != null) {
+                DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
+                Disipline disipline = disiplineFacadeREST.find(entity.disiplineId);
+                if (disipline != null) {
+                    project.setDisipline(disipline);
+                }
+            }
+            // Check if disipline has been changed
             if (entity.getDisipline() != null) {
                 DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
                 Disipline disipline = disiplineFacadeREST.find(entity.getDisipline().getDisiplineId());
@@ -630,6 +749,22 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
                 }
             } else {
 
+            }
+
+            // Check if images have been added
+            for (Media image : entity.getImageList()) {
+                if (!project.getImageList().contains(image)) {
+                    project.getImageList().add(image);
+                }
+            }
+
+//            if(!entity.getImageList().isEmpty()) {
+//                project.setImageList(entity.getImageList());
+//            }
+
+            // Check if reports have been added
+            if (!entity.getReportList().isEmpty()) {
+                project.setReportList(entity.getReportList());
             }
 
             // Check if subproject has been removed
@@ -709,7 +844,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
                     linkToCompany(company.getCompanyId(), child);
                 }
             }
-            System.out.println("editProjectOnly: Trying to save a project that does not exist: " + entity.getProjectId() + ": " + entity.getName());
+            System.out.println("Trying to save a project that does not exist: " + entity.getProjectId() + ": " + entity.getName());
         }
     }
 
@@ -728,16 +863,60 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
 //        zohoClient.testCRM(companyId);
 //    }
 
+    private void optimizeChildren(Project project) {
+        for (Project child : project.getProjectList()) {
+            child.setDisipline(null);
+            //child.setAsset(null);
+            child.setUserRoleList(new ArrayList<>());
+            child.setUserList(new ArrayList<>());
+        }
+    }
+
+    @GET
+    @Path("{id}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public Project find(@PathParam("id") String id) {
+        Project project = findNative(id);
+        if (project != null) {
+            optimizeChildren(project);
+        }
+        return project;
+    }
+
+
     @GET
     @Path("findOptimized/{id}")
     @Produces({MediaType.APPLICATION_JSON})
     public Project findOptimized(@PathParam("id") String id) {
         Project project = findNative(id);
-        optimizeProject(project, false);
-        Gson gson = new GsonBuilder().create();
+        if (project != null) {
+            boolean isLiteAccount = false;
+            if (project.getAuthority() != null) {
+                if (project.getAuthority().getIsLiteAccount()) {
+                    isLiteAccount = true;
+                }
+            }
+            optimizeProject(project, isLiteAccount);
 
-        project.getObservationList().clear();
-        //System.out.println(gson.toJson(project));
+            project.setAsset(null);
+            project.setObservationList(new ArrayList<>());
+            project.getDisipline().setEquipmentTypeList(new ArrayList<>());
+            optimizeChildren(project);
+            return project;
+
+        }
+        return null;
+    }
+
+    @Deprecated
+    @GET
+    @Path("findOptimized2/{id}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public Project findOptimized2(@PathParam("id") String id) {
+        Project project = findNative(id);
+        optimizeProject(project, false);
+        project.setAsset(null);
+        project.setObservationList(new ArrayList<>());
         return project;
     }
 
@@ -757,14 +936,6 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
 
             return resultList.get(0);
         }
-    }
-
-    @GET
-    @Path("{id}")
-    @Produces({MediaType.APPLICATION_JSON})
-    public Project find(@PathParam("id") String id) {
-        return findNative(id);
-        //return super.find(id);
     }
 
     @GET
@@ -1367,7 +1538,6 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
                                                     @PathParam("toDate") String toDate,
                                                     @PathParam("batchOffset") String batchOffset,
                                                     @PathParam("batchSize") String batchSize) {
-
         int offset = Integer.parseInt(batchOffset);
         int size = Integer.parseInt(batchSize);
         DateTime jodaFromDateTime = new DateTime(fromDate);
@@ -1376,7 +1546,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         ProjectRequestParameters projectRequestParameters = new ProjectRequestParameters();
         projectRequestParameters.authorityId = authorityId;
 
-        projectRequestParameters.states.add(0);
+        //projectRequestParameters.states.add(0);
         projectRequestParameters.states.add(1);
         projectRequestParameters.states.add(5);
         projectRequestParameters.states.add(8);
@@ -1394,16 +1564,37 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         projectRequestParameters.batchSize = 9999;
         projectRequestParameters.excludeUpcoming = true;
         projectRequestParameters.isDeleted = false;
+        projectRequestParameters.dateField = ProjectRequestParameters.DateField.CREATED_DATE;
 
+        List<Project> filteredList = loadInvoiceProjects(projectRequestParameters);
+        List<DisiplineGroup> disiplineGroups = DisiplineGroup.createDisiplineGroupList(filteredList);
+
+        return disiplineGroups;
+    }
+
+    @PUT
+    @Path("loadInvoiceProjects")
+    @Produces({MediaType.APPLICATION_JSON})
+    @Consumes({MediaType.APPLICATION_JSON})
+    public List<Project> loadInvoiceProjects(ProjectRequestParameters projectRequestParameters) {
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
         String queryString = createSqlString(projectRequestParameters, false, "");
         List<Project> resultList = em.createNativeQuery(queryString, Project.class)
                 .setParameter(1, projectRequestParameters.authorityId)
                 .getResultList();
-        em.close();
-        List<DisiplineGroup> disiplineGroups = DisiplineGroup.createDisiplineGroupList(resultList);
 
-        return disiplineGroups;
+        List<Project> filteredList = new ArrayList<>();
+        for (Project project : resultList) {
+            if (project.getCustomer() != null) {
+                if (!project.getCustomer().isDemo()) {
+                    filteredList.add(project);
+                }
+            }
+        }
+        em.close();
+        //List<DisiplineGroup> disiplineGroups = DisiplineGroup.createDisiplineGroupList(filteredList);
+
+        return filteredList;
     }
 
 
@@ -1796,7 +1987,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
         Company authority = companyFacadeREST.findNative(authorityId);
         for (Project project : projects) {
-            optimizeProject(project, authority.isFreeAccount());
+            optimizeProject(project, authority.getIsLiteAccount());
         }
         return projects;
     }
@@ -1818,7 +2009,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         String orderLimitString = "";
         String deletedString = "0";
 
-        if(parameters.isDeleted) {
+        if (parameters.isDeleted) {
             deletedString = "1";
         }
 
@@ -1852,7 +2043,11 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             } else {
                 selectString = "SELECT * FROM project p\n";
                 if (parameters.batchOffset != null && parameters.batchSize != null) {
-                    orderLimitString = " ORDER BY p.modified_date DESC LIMIT " + parameters.batchOffset + "," + parameters.batchSize + " ";
+                    String sortDate = "modified_date";
+                    if (parameters.dateField == ProjectRequestParameters.DateField.CREATED_DATE) {
+                        sortDate = "created_date";
+                    }
+                    orderLimitString = " ORDER BY p." + sortDate + " DESC LIMIT " + parameters.batchOffset + "," + parameters.batchSize + " ";
                 }
             }
         }
@@ -1888,11 +2083,11 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             String strToDate = dateFormatter.format(parameters.toDate);
             String nextDateQuery = " (p.next_control_date > '" + strFromDate + "' AND p.next_control_date < '" + strToDate + "')\n";
             String dateField = parameters.dateField.getValue();
-            if(parameters.dateField != ProjectRequestParameters.DateField.SCHEDULED_DATE) {
-                queryDateString = " ((p." + dateField + " >= '" + strFromDate + "' AND p." + dateField + " <= '" + strToDate + "') OR " +
+            if (parameters.dateField != ProjectRequestParameters.DateField.SCHEDULED_DATE) {
+                queryDateString = " ((p." + dateField + " > '" + strFromDate + "' AND p." + dateField + " <= '" + strToDate + "') OR " +
                         nextDateQuery;
                 if (parameters.excludeUpcoming) {
-                    queryDateString = " (p." + dateField + " >= '" + strFromDate + "' AND p." + dateField + " <= '" + strToDate + "'\n";
+                    queryDateString = " (p." + dateField + " > '" + strFromDate + "' AND p." + dateField + " <= '" + strToDate + "'\n";
                 }
                 if (parameters.isUpcoming) {
                     queryDateString = /*"(" + */nextDateQuery;
@@ -1902,15 +2097,15 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
                 queryDateString += " AND \n";
             } else {
                 queryDateString =
-                         "(( \n" +
-                        		"(p.scheduled_start_date is NOT NULL AND p.scheduled_start_date >= '" + strFromDate + "' AND p.scheduled_start_date <= '" + strToDate + "')\n" +
-                        	"OR\n" +
-                        		"(p.scheduled_start_date is NULL AND p.created_date >= '" + strFromDate + "' AND p.created_date <= '" + strToDate + "'))\n";
-                if(!parameters.excludeUpcoming){
+                        "(( \n" +
+                                "(p.scheduled_start_date is NOT NULL AND p.scheduled_start_date >= '" + strFromDate + "' AND p.scheduled_start_date <= '" + strToDate + "')\n" +
+                                "OR\n" +
+                                "(p.scheduled_start_date is NULL AND p.created_date >= '" + strFromDate + "' AND p.created_date <= '" + strToDate + "'))\n";
+                if (!parameters.excludeUpcoming) {
                     queryDateString +=
-                        	"OR\n" +
+                            "OR\n" +
                                     nextDateQuery +
-                          ")\n";
+                                    ")\n";
                 }
                 queryDateString += " AND \n";
             }
@@ -1934,7 +2129,6 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             joinUserString = " LEFT JOIN project_has_user phu ON phu.project_project_id = p.project_id \n";
             queryUserString = " phu.user_user_id = '" + userId + "' AND\n";
         }
-
 
 
         sqlString = selectString +
@@ -1991,13 +2185,14 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
         String sqlQuery = createSqlString(parameters, true, "");
         Query queryCounter = em.createNativeQuery(sqlQuery);
-                //.setParameter(1, parameters.authorityId);
+        //.setParameter(1, parameters.authorityId);
         Number counterUnassigned = (Number) queryCounter.getSingleResult();
         Integer integerCounter = Integer.parseInt(counterUnassigned.toString());
 
         em.close();
         return integerCounter;
     }
+
 
     @Deprecated
     @PUT
@@ -2018,7 +2213,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         em.close();
 
         for (Project project : resultList) {
-            optimizeProject(project, authority.isFreeAccount());
+            optimizeProject(project, authority.getIsLiteAccount());
 
             //--------------------------------
             // Following 3 lines are added for
@@ -2032,6 +2227,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         return resultList;
         //return integerCounter;
     }
+
 
     @PUT
     @Path("loadProjectsOptimized")
@@ -2047,13 +2243,15 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         List<Project> resultList = em.createNativeQuery(queryString, Project.class)
                 .setParameter(1, parameters.authorityId)
                 .getResultList();
-
         em.close();
 
         for (Project project : resultList) {
-            optimizeProject(project, authority.isFreeAccount());
+            optimizeProject(project, authority.getIsLiteAccount());
+            List<Project> activeChildren = project.getProjectList().stream().filter(r -> r.isDeleted() == false).collect(Collectors.toList());
+            project.childCounter = activeChildren.size();
+            project.getProjectList().clear();  // WARNING::: Removing children for hard optimizing
             for (Project child : project.getProjectList()) {
-                optimizeProject(child, authority.isFreeAccount());
+                optimizeProject(child, authority.getIsLiteAccount());
                 child.setDisipline(null);
                 for (User user : child.getUserList()) {
                     user.setUserRoleList(new ArrayList<>());
@@ -2064,41 +2262,10 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             for (User user : project.getUserList()) {
                 user.setUserRoleList(new ArrayList<>());
             }
-            project.setUserRoleList(new ArrayList<>());
+            //project.setUserRoleList(new ArrayList<>());
         }
         return resultList;
     }
-
-/*    @PUT
-    @Path("loadProjectsByIds")
-    @Produces({MediaType.APPLICATION_JSON})
-    @Consumes({MediaType.APPLICATION_JSON})
-    public List<Project> loadProjectsByIds(List<String> projectIds) {
-        String projectString = "(";
-        for (String projectID : projectIds) {
-            projectString += "'" + projectID + "',";
-        }
-        projectString = projectString.substring(0, projectString.length() - 1);
-        projectString += ")";
-
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        String queryString = "SELECT * FROM project p\n" +
-                                "WHERE " +
-                                " p.project_id in " + projectString +
-                                " ORDER BY p.created_date DESC \n";
-
-        List<Project> result = (List<Project>)em.createNativeQuery(queryString, Project.class)
-                .getResultList();
-        em.close();
-
-        for(Project project:result) {
-            optimizeProject(project,false);
-            project.setDisipline(null);
-            project.getUserList().clear();
-            project.getUserRoleList().clear();
-        }
-        return result;
-    } */
 
     @PUT
     @Path("loadProjectIds")
@@ -2106,7 +2273,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
     @Consumes({MediaType.APPLICATION_JSON})
     public List<String> loadProjectIds(ProjectRequestParameters parameters) {
 
-        List<Project> resultList = loadProjects(parameters);
+        List<Project> resultList = loadProjectsOptimized(parameters);
         List<String> projectIds = new ArrayList<>();
         for (Project project : resultList) {
             projectIds.add(project.getProjectId());
@@ -2133,7 +2300,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         em.close();
 
         for (Project project : resultList) {
-            optimizeProject(project, authority.isFreeAccount());
+            optimizeProject(project, authority.getIsLiteAccount());
 
             project.getUserList().clear();
             project.getUserRoleList().clear();
@@ -2142,6 +2309,43 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         return resultList;
 
         //return integerCounter;
+    }
+
+    @GET
+    @Path("loadLatestProject/{assetId}/{authorityId}/{disiplineId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Project> loadLatestProject(
+            @PathParam("assetId") String assetId,
+            @PathParam("authorityId") String authorityId,
+            @PathParam("disiplineId") String disiplineId
+    ) {
+        String sqlQuery = """
+                SELECT p.*
+                FROM project p
+                         JOIN company_has_project chp ON p.project_id = chp.project_project_id
+                WHERE disipline = ?1
+                  AND asset = ?2
+                  AND chp.company_company_id = ?3
+                ORDER BY created_date DESC
+                LIMIT 0,1;
+                """;
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Project> resultList = em.createNativeQuery(sqlQuery, Project.class)
+                .setParameter(1, disiplineId)
+                .setParameter(2, assetId)
+                .setParameter(3, authorityId)
+                .getResultList();
+        em.close();
+        for (Project project : resultList) {
+            if (project.getAsset() != null) {
+                project.assetId = project.getAsset().getAssetId();
+                project.assetName = project.getAsset().getDefaultName();
+                project.setAsset(null);
+            }
+            project.disiplineId = project.getDisipline().getDisiplineId();
+            project.setDisipline(null);
+        }
+        return resultList;
     }
 
     @GET
@@ -2161,7 +2365,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
         Company authority = companyFacadeREST.findNative(authorityId);
         for (Project project : projects) {
-            optimizeProject(project, authority.isFreeAccount());
+            optimizeProject(project, authority.getIsLiteAccount());
         }
         return projects;
     }
@@ -2182,7 +2386,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             System.out.println("Project missing customer");
         }
 
-        if (project.getAuthority().isFreeAccount()) {
+        if (isLiteAccount) {
 
         } else {
             if (project.getCustomer() != null) {
@@ -2199,7 +2403,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
             project.disiplineId = project.getDisipline().getDisiplineId();
             project.disiplineName = project.getDisipline().getName();
         }
-        if (project.getAsset() != null && !isLiteAccount) {
+        if (project.getAsset() != null) {
             if (project.getImage() != null) {
                 project.getImageList().add(project.getImage());
             }
@@ -2363,7 +2567,7 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         Company authority = companyFacadeREST.findNative(authorityId);
 
         for (Project project : projects) {
-            optimizeProject(project, authority.isFreeAccount());
+            optimizeProject(project, authority.getIsLiteAccount());
         }
         return projects;
         //return loadProjects(companyId, authorityId, userId, state, null, true, offset, size);
@@ -2394,9 +2598,115 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
                                 " chp.company_company_id = ?1 AND" +
                                 " ahp.company_company_id = ?2 AND" +
                                 " p.deleted = 0 AND " +
-                                " (p.name LIKE ?3 OR p.project_number = ?4 OR a.name LIKE ?3) "
+                                " (p.name LIKE ?3 OR p.project_number = ?4 OR a.name LIKE ?3 OR p.customer_name LIKE ?3) "
                                 + "ORDER BY p.modified_date DESC \n"
-                                + "LIMIT 0,6",
+                                + "LIMIT 0,10",
+                        Project.class)
+                .setParameter(1, companyId)
+                .setParameter(2, authorityId)
+                .setParameter(3, queryString)
+                .setParameter(4, projectNumber)
+                //.setParameter(3,null)
+                .getResultList();
+//        if (excludeDeleted) {
+//            resultList = resultList.stream().filter(r -> r.isDeleted() == false).collect(Collectors.toList());
+//        }
+        em.close();
+        for (Project project : resultList) {
+            optimizeProject(project, false);
+        }
+        return resultList;
+    }
+
+    private List<Project> queryProjectsOptimized(String companyId,
+                                                 String authorityId,
+                                                 String queryString,
+                                                 boolean excludeDeleted) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+
+        int projectNumber = -1;
+        try {
+            projectNumber = Integer.parseInt(queryString);
+        } catch (Exception e) {
+
+        }
+
+        queryString = "%" + queryString + "%";
+        List<Project> resultList = (List<Project>) em.createNativeQuery("SELECT "
+                                + "* FROM project p\n"
+                                + "JOIN company_has_project chp\n"
+                                + "	ON chp.project_project_id = p.project_id\n"
+                                + "JOIN company_has_project ahp\n"
+                                + "	ON ahp.project_project_id = p.project_id\n"
+                                + "LEFT JOIN asset a ON a.asset_id = p.asset\n"
+                                + "WHERE " +
+                                " chp.company_company_id = ?1 AND" +
+                                " ahp.company_company_id = ?2 AND" +
+                                " p.deleted = 0 AND " +
+                                " (p.name LIKE ?3 OR p.project_number = ?4 OR a.name LIKE ?3 OR p.customer_name LIKE ?3) "
+                                + "ORDER BY p.modified_date DESC \n"
+                                + "LIMIT 0,8",
+                        Project.class)
+                .setParameter(1, companyId)
+                .setParameter(2, authorityId)
+                .setParameter(3, queryString)
+                .setParameter(4, projectNumber)
+                //.setParameter(3,null)
+                .getResultList();
+//        if (excludeDeleted) {
+//            resultList = resultList.stream().filter(r -> r.isDeleted() == false).collect(Collectors.toList());
+//        }
+        em.close();
+        for (Project project : resultList) {
+            optimizeProject(project, false);
+        }
+        for (Project project : resultList) {
+            project.setCompanyList(new ArrayList<>());
+            project.setUserRoleList(new ArrayList<>());
+            project.setProjectList(new ArrayList<>());
+            project.setDisipline(null);
+            project.setUserList(new ArrayList<>());
+        }
+        return resultList;
+    }
+
+    @GET
+    @Path("queryProjects/{companyid}/{authorityid}/{query}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Project> queryProjects(@PathParam("companyid") String companyId, @PathParam("authorityid") String authorityId, @PathParam("query") String query) {
+        List<Project> projects = queryProjects(companyId, authorityId, query, true);
+        return projects;
+    }
+
+    @GET
+    @Path("queryProjectsFaster/{companyId}/{authorityId}/{queryString}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Project> queryProjectsFaster(@PathParam("companyId") String companyId,
+                                             @PathParam("authorityId") String authorityId,
+                                             @PathParam("queryString") String queryString) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+
+        int projectNumber = -1;
+        try {
+            projectNumber = Integer.parseInt(queryString);
+        } catch (Exception e) {
+
+        }
+
+        queryString = "%" + queryString + "%";
+        List<Project> resultList = (List<Project>) em.createNativeQuery("SELECT "
+                                + "* FROM project p\n"
+                                + "JOIN company_has_project chp\n"
+                                + "	ON chp.project_project_id = p.project_id\n"
+                                + "JOIN company_has_project ahp\n"
+                                + "	ON ahp.project_project_id = p.project_id\n"
+                                + "WHERE " +
+                                " chp.company_company_id = ?1 AND" +
+                                " ahp.company_company_id = ?2 AND" +
+                                " p.deleted = 0 AND " +
+                                " (p.name LIKE ?3 OR p.project_number = ?4 OR p.customer_name LIKE ?3) "
+                                + "ORDER BY p.modified_date DESC \n"
+                                + "LIMIT 0,10",
                         Project.class)
                 .setParameter(1, companyId)
                 .setParameter(2, authorityId)
@@ -2415,10 +2725,10 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
     }
 
     @GET
-    @Path("queryProjects/{companyid}/{authorityid}/{query}")
+    @Path("queryProjectsOptimized/{companyid}/{authorityid}/{query}")
     @Produces({MediaType.APPLICATION_JSON})
-    public List<Project> queryProjects(@PathParam("companyid") String companyId, @PathParam("authorityid") String authorityId, @PathParam("query") String query) {
-        List<Project> projects = queryProjects(companyId, authorityId, query, true);
+    public List<Project> queryProjectsOptimized(@PathParam("companyid") String companyId, @PathParam("authorityid") String authorityId, @PathParam("query") String query) {
+        List<Project> projects = queryProjectsOptimized(companyId, authorityId, query, true);
         return projects;
     }
 
@@ -2469,11 +2779,10 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
         Company authority = companyFacadeREST.findNative(companyId);
         for (Project project : resultList) {
-            optimizeProject(project, authority.isFreeAccount());
+            optimizeProject(project, authority.getIsLiteAccount());
         }
         return resultList;
     }
-
 
     @GET
     @Path("companyprojects/{companyid}")
@@ -2652,7 +2961,81 @@ public class ProjectFacadeREST extends AbstractFacade<Project> {
         } else {
             return new ArrayList<>();
         }
+    }
 
+    private Integer countReportTasksForProject(String projectId) {
+
+        Project project = findOptimized(projectId);
+        String comparer = ">";
+
+        // Check if disipline is from Flir ACE platform.
+        // Note to self: QUICK AND VERY DIRTY
+        if (project.getDisipline().getDisiplineId().equalsIgnoreCase("7e445a7a-ce06-474c-93ff-d718a8c8cfe70")) {
+            comparer = ">=";
+        }
+        // Check if projects disipline hides TGs
+        if (Parameter.getBooleanParameter(project, Parameter.ParameterType.REPORT_HIDE_TG)) {
+            comparer = ">=";
+        }
+        //        String sqlCountObservation = """
+//                select
+//                    count(o.observation_id)
+//                from observation o
+//                where
+//                    o.deleted = 0
+//                    and not ((select
+//                         count(*)
+//                     from observation_has_measurement ohm
+//                     where ohm.observation_observation_id = o.observation_id
+//                     ) > 0 and deviation = 0)
+//                    and o.project =
+//                """
+
+        String sqlCountObservation = """
+                select count(i.image_id) from observation o
+                        join observation_has_image ohi on o.observation_id = ohi.observation
+                        join image i on ohi.image = i.image_id
+                where
+                    o.deleted = 0
+                    and i.deleted = 0
+                    and deviation """ + comparer + " 0";
+        sqlCountObservation += " and o.project = ";
+        sqlCountObservation += " '" + projectId + "'";
+
+        String sqlCountChecklistQuestions = """
+                select
+                    count(distinct clq.check_list_question_id) as clCount
+                from answer_value av
+                    join check_list_answer cla on av.check_list_answer = cla.check_list_answer_id
+                    join check_list_question clq on cla.check_list_question = clq.check_list_question_id
+                where
+                    av.project =
+                """;
+        sqlCountChecklistQuestions += " '" + projectId + "'";
+
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        Query query = em.createNativeQuery(sqlCountObservation);
+        Number oCounter = (Number) query.getSingleResult();
+        Query query2 = em.createNativeQuery(sqlCountChecklistQuestions);
+        Number clCounter = (Number) query2.getSingleResult();
+
+        int taskCounter = Integer.parseInt(oCounter.toString()) + Integer.parseInt(clCounter.toString());
+
+        em.close();
+        return taskCounter;
+    }
+
+    @GET
+    @Path("countReportTasks/{projectId}")
+    public Integer countReportTasks(@PathParam("projectId") String projectId) {
+        int taskCounter = 0;
+        taskCounter = countReportTasksForProject(projectId);
+        // Count for child projects
+        Project project = findNative(projectId);
+        for (Project child : project.getProjectList()) {
+            taskCounter += countReportTasksForProject(child.getProjectId()) + 2;
+        }
+        return taskCounter;
     }
 
 }

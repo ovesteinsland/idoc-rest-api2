@@ -97,6 +97,52 @@ public class ImageLoader {
         return authorityPart;
     }
 
+    public Media addImage(String authorityId, Observation observation, String mimeType, String mediaType, Media.Purpose purpose) {
+
+        Media media;
+        media = new Media(UUID.randomUUID().toString());
+
+        observation.getImageList().add(media);
+        media.getObservationList().add(observation);
+
+        String filename = "img" + media.getMediaId();
+
+        media.setOrderIndex(observation.getImageList().size() + 1);
+        media.setMediaType(mediaType);
+        ImageClient imageClient = new ImageClient();
+        imageClient.createWithObservation_JSON(media, observation.getObservationId());
+        imageClient.close();
+
+        editMedia(media,authorityId,filename,mimeType,purpose);
+        return media;
+    }
+
+    private void editMedia(Media image, String authorityId, String filename, String mimeType, Media.Purpose purpose) {
+        updateMedia(image,authorityId,filename,mimeType, purpose);
+
+        ImageClient client = new ImageClient();
+        client.edit_JSON(image, image.getMediaId());
+        client.close();
+    }
+
+    private void updateMedia(Media media, String authorityId, String filename, String mimeType, Media.Purpose purpose){
+        String folderName = getFolderName(authorityId);
+
+        String fileExtension = ".jpg";
+        if (mimeType.equals("image/png")) {
+            fileExtension = ".png";
+        }
+        String smallFilename = filename + "_SMALL" + fileExtension;
+        String mediumFilename = filename + "_MEDIUM" + fileExtension;
+        String largeFilename = filename + "_LARGE" + fileExtension;
+
+        media.setUrlSmall(folderName + "/" + smallFilename);
+        media.setUrlMedium(folderName + "/" + mediumFilename);
+        media.setUrlLarge(folderName + "/" + largeFilename);
+
+        media.setDeleted(false);
+        media.setMediaPurpose(purpose.getValue());
+    }
     private void addImage(Media image, BufferedImage uiImage, String folderName, String filename, String filetype, boolean isUploadExternal) {
 
         String fileExtension =".jpg";

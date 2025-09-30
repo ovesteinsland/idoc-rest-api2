@@ -1,0 +1,23 @@
+### 1) Be om Signed PUT-URL
+POST http://localhost:8080/idoc_rest_api2_war/iDocWebServices/webresources/google.cloud.storage/signed-url
+Content-Type: application/json
+Authorization: Basic QXBwbGljYXRpb25Vc2VyOkloYWR0aGlzdGhpbmc5Njk5MDY=
+
+{
+  "bucket": "idocdatabase-developement.appspot.com",
+  "objectName": "software-control/aaademo/test-put.txt",
+  "method": "PUT",
+  "contentType": "text/plain",
+  "expiresMinutes": 10
+}
+
+### 2) Last opp innhold med Signed PUT-URL
+# 2a) Lim inn signedUrl fra respons 1 i variabelen under før du kjører denne:
+#     Eksempel: @PUT_URL=https://storage.googleapis.com/....
+@PUT_URL=https://storage.googleapis.com/idocdatabase-developement.appspot.com/software-control/aaademo/test-put.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=themidocapisignedurl%40idocdatabase-developement.iam.gserviceaccount.com%2F20250924%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20250924T235122Z&X-Goog-Expires=600&X-Goog-SignedHeaders=content-type%3Bhost&X-Goog-Signature=28e6fceba54d644e633971e27cbca215221b7fe1c70a86e2ab405e617b2b97df9072289c0fe2f483ee43cc9220d1d89088e904e849092770b8857cfada307c5efc0022547a412857fab31ef2dd237df09fd1fc2cd2f4786967c09b69a83d3c9fe5b6e0adebceabea2a44dabea3480acb5295f2492c59a2975d517a8e4c5ede31cf7156dbb8ddf74b80154e33a8f300bd7b3d5c0e14f7257e87003d8f3f9c44e8bcc9616bb9c07bafd31fec5528940a9b720c9a1b493ef8b75a897274647059c950ac2b5d253606d97d89ad82c94abdb444f6c590e8d950125fe71f689d2dd403c5ad37eb09f486b56cc0f194bb737615853e0c598b304375a7a1d01b43fcec66
+
+PUT {{PUT_URL}}
+Content-Type: text/plain
+
+Hei fra Signed PUT!
+

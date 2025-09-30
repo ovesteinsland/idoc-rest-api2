@@ -6,6 +6,8 @@
  */
 package no.softwarecontrol.idoc.webservices.restapi;
 
+import jakarta.annotation.security.PermitAll;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -14,6 +16,7 @@ import jakarta.persistence.Query;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.authentication.PasswordAuthentication;
+import no.softwarecontrol.idoc.data.entityhelper.CustomerData;
 import no.softwarecontrol.idoc.data.entityhelper.IDocCredentials;
 import no.softwarecontrol.idoc.data.entityobject.*;
 import no.softwarecontrol.idoc.webservices.opplysningen1881.ContactPoints;
@@ -21,6 +24,7 @@ import no.softwarecontrol.idoc.webservices.opplysningen1881.Contacts;
 import no.softwarecontrol.idoc.webservices.opplysningen1881.Opplysningen1881Client;
 import no.softwarecontrol.idoc.webservices.opplysningen1881.Opplysningen1881Result;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
+import no.softwarecontrol.idoc.webservices.restapi.ratelimit.RateLimit;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
@@ -30,9 +34,10 @@ import java.util.*;
 /**
  * @author ovesteinsland
  */
+@SuppressWarnings("LanguageDetectionInspection")
 @Stateless
 @Path("no.softwarecontrol.idoc.entityobject.user")
-//@RolesAllowed({"ApplicationRole"})
+@RolesAllowed({"ApplicationRole"})
 public class UserFacadeREST extends AbstractFacade<User> {
 
     @EJB
@@ -47,6 +52,147 @@ public class UserFacadeREST extends AbstractFacade<User> {
     protected String getSelectAllQuery() {
         return "User.findAll";
     }
+
+    @Deprecated()
+    @POST
+    @Path("signup")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public String signup(CustomerData entity) {
+        User user = signupUser(entity);
+        return user.getUserId();
+    }
+
+    @GET
+    @Path("countByLoginName/{loginName}")
+    @Produces({MediaType.APPLICATION_JSON})
+    @PermitAll
+    @RateLimit(requests = 10, seconds = 60)
+    public String countByLoginName(@PathParam("loginName") String loginName) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        try {
+            String sql = "SELECT COUNT(*) FROM user WHERE login_name = ?1";
+            Number count = (Number) em.createNativeQuery(sql)
+                    .setParameter(1, loginName)
+                    .getSingleResult();
+
+            long counter = count.longValue();
+            if(counter > 0){ counter = 1L; }
+            return String.valueOf(counter);
+        } finally {
+            em.close();
+        }
+    }
+
+    @POST
+    @Path("signupUser")
+    @Consumes({MediaType.APPLICATION_JSON})
+    @PermitAll
+    @RateLimit(requests = 10, seconds = 60)
+    public User signupUser(CustomerData entity) {
+        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
+        ContractFacadeREST contractFacadeREST = new ContractFacadeREST();
+        DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
+        LanguageFacadeRest languageFacadeREST = new LanguageFacadeRest();
+
+        Company authority = new Company();
+        authority.setCompanyId(UUID.randomUUID().toString());
+        authority.setName(entity.getCompany());
+        authority.setCompanyType("AUTHORITY");
+        authority.setIsLiteAccount(true);
+        authority.setDefaultLanguageCode(entity.getLanguageCode());
+        companyFacadeREST.create(authority);
+
+        User user = new User();
+        user.setUserId(UUID.randomUUID().toString());
+        user.setFirstname(entity.getFirstname());
+        user.setLastname(entity.getLastname());
+        user.setEmail(entity.getEmail());
+        user.setLoginName(entity.getEmail());
+        user.setPassword(entity.getPassword());
+        user.setAuthority(authority.getCompanyId());
+        super.create(user);
+
+        this.editPassword2(user.getUserId(), user);
+
+        System.out.println("--------------------------------------------");
+        System.out.println("UserID = " + user.getUserId());
+
+        linkToCompany(authority.getCompanyId(), user.getUserId());
+        System.out.println("--------------------------------------------");
+        System.out.println("AuthorityId = " + authority.getCompanyId());
+
+        Company customer = new Company();
+        customer.setCompanyId(UUID.randomUUID().toString());
+        customer.setName("Generic Customer");
+        customer.setCompanyType("OWNER");
+        customer.setIsLiteAccount(true);
+        authority.setDefaultLanguageCode(entity.getLanguageCode());
+        companyFacadeREST.create(customer);
+
+        Company softwareControl = companyFacadeREST.find("a84bdb6d-6f4b-4116-985b-6418ade5e957");
+        Contract authorityContract = new Contract();
+        authorityContract.setContractId(UUID.randomUUID().toString());
+        authorityContract.setPartner(authority);
+        authorityContract.setContractType("CUSTOMER");
+        authorityContract.setCompany(softwareControl);
+        contractFacadeREST.create(authorityContract);
+        System.out.println("--------------------------------------------");
+        System.out.println("Authority: ContractId = " + authorityContract.getContractId());
+
+        Contract contract = new Contract();
+        contract.setContractId(UUID.randomUUID().toString());
+        contract.setPartner(customer);
+        contract.setContractType("CUSTOMER");
+        contract.setCompany(authority);
+        contractFacadeREST.create(contract);
+
+        // Link company to disipline
+        disiplineFacadeREST.linkToCompany(authority.getCompanyId(), "7e445a7a-ce06-474c-93ff-d718a8c8cfe70"); // NEK 405-1 Termografering
+
+        // Link company to language
+        List<Language> languages = languageFacadeREST.findAll();
+        Language language = languages.stream()
+                .filter(l -> (entity.getLanguageCode()).equals(l.getLanguageCode()))
+                .findFirst()
+                .orElse(null);
+        if (language == null) {
+            language = languages.stream()
+                    .filter(l -> ("en").equals(l.getLanguageCode()))
+                    .findFirst()
+                    .orElse(null);
+            if (language == null) {
+                language = languages.get(0);
+            }
+        }
+        languageFacadeREST.linkToCompany(authority.getCompanyId(), language.getLanguageId());
+
+        AssetGroupFacadeREST assetGroupFacadeREST = new AssetGroupFacadeREST();
+        AssetGroup assetGroup = new AssetGroup();
+        assetGroup.setAssetGroupId(UUID.randomUUID().toString());
+        assetGroup.setName("Asset Group");
+        assetGroupFacadeREST.create(assetGroup);
+        assetGroupFacadeREST.linkToCompany(authority.getCompanyId(), assetGroup);
+        assetGroupFacadeREST.linkToCompany(customer.getCompanyId(), assetGroup);
+        System.out.println("--------------------------------------------");
+        System.out.println("AssetGroupId = " + assetGroup.getAssetGroupId());
+
+
+        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
+        Asset asset = new Asset();
+        asset.setAssetId(UUID.randomUUID().toString());
+        asset.setAssetGroup(assetGroup);
+        asset.setName("Default Asset");
+        assetFacadeREST.create(asset);
+        assetFacadeREST.linkCompany(authority.getCompanyId(), asset);
+        assetFacadeREST.linkCompany(customer.getCompanyId(), asset);
+        System.out.println("--------------------------------------------");
+        System.out.println("AssetId = " + asset.getAssetId());
+        System.out.println("-------------     Signup   -----------------");
+        System.out.println("-------------   Completed! -----------------");
+        System.out.println();
+        return user;
+    }
+
 
     @POST
     @Override
@@ -65,7 +211,7 @@ public class UserFacadeREST extends AbstractFacade<User> {
         User existing = find(entity.getUserId());
         if (existing == null) {
             super.create(entity);
-            linkToCompany(companyId,entity.getUserId());
+            linkToCompany(companyId, entity.getUserId());
         }
     }
 
@@ -93,17 +239,6 @@ public class UserFacadeREST extends AbstractFacade<User> {
     @Path("editPassword/{id}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void editPassword(@PathParam("id") String id, User entity) {
-        User user = this.find(entity.getUserId());
-        if (user != null) {
-            user.setLoginName(entity.getLoginName());
-            user.setPassword(entity.getPassword());
-            user.setPinCode(entity.getPinCode());
-            user.setActivationCode(entity.getActivationCode());
-            super.edit(user);
-        }
-    }
-
-    public void editInternal(User entity) {
         User user = this.find(entity.getUserId());
         if (user != null) {
             user.setLoginName(entity.getLoginName());
@@ -145,6 +280,7 @@ public class UserFacadeREST extends AbstractFacade<User> {
             user.setAuthority(entity.getAuthority());
             user.setLicence(entity.getLicence());
             user.setPreferenceJson(entity.getPreferenceJson());
+            user.setSub(entity.getSub());
             if (!entity.getIntegrationList().isEmpty()) {
                 user.setIntegrationList(entity.getIntegrationList());
             }
@@ -228,19 +364,7 @@ public class UserFacadeREST extends AbstractFacade<User> {
         return users;
     }
 
-    @GET
-    @Path("countByLoginName/{loginName}")
-    @Produces({MediaType.APPLICATION_JSON})
-    public String countByLoginName(@PathParam("loginName") String loginName) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
 
-        Query query = em.createNamedQuery("User.findByLoginName");
-        query.setParameter("loginName", loginName);
-        List<User> users = query.getResultList();
-
-        em.close();
-        return String.valueOf(users.size());
-    }
 
     @GET
     @Path("findContacts/{id}")
@@ -269,27 +393,40 @@ public class UserFacadeREST extends AbstractFacade<User> {
     @Produces({MediaType.APPLICATION_JSON})
     public List<User> authenticate(@PathParam("username") String username, @PathParam("password") String password) {
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        Query query = em.createNamedQuery("User.findByLoginName");
-        query.setParameter("loginName", username);
-        List<User> results = query.getResultList();
-        if (!results.isEmpty()) {
-            PasswordAuthentication passwordAuthentication = new PasswordAuthentication(16);
-            String hashedPassword = results.get(0).getPassword();
-            if(hashedPassword != null) {
-                if (passwordAuthentication.authenticate(password.toCharArray(), hashedPassword)) {
+        try {
+            String sqlString = """
+                    SELECT *
+                    FROM user 
+                    WHERE login_name= ?1 
+                    """;
 
+            List<User> results = (List<User>) em.createNativeQuery(sqlString, User.class)
+                    .setParameter(1, username)
+                    .getResultList();
+
+            //List<User> results = query.getResultList();
+            if (!results.isEmpty()) {
+                PasswordAuthentication passwordAuthentication = new PasswordAuthentication(16);
+                String hashedPassword = results.get(0).getPassword();
+                if (hashedPassword != null) {
+                    if (passwordAuthentication.authenticate(password.toCharArray(), hashedPassword)) {
+
+                    } else {
+                        results = new ArrayList<>();
+                    }
                 } else {
-                    System.out.println("Authentication FAILED");
                     results = new ArrayList<>();
                 }
             } else {
                 results = new ArrayList<>();
             }
-        } else {
-            results = new ArrayList<>();
+            return results;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ArrayList<>();
+        } finally {
+            em.close();
         }
-        em.close();
-        return results;
     }
 
     @GET
@@ -310,31 +447,13 @@ public class UserFacadeREST extends AbstractFacade<User> {
                 System.out.println("hashedPassword = " + hashedPassword);
                 String decodedPassword = URLDecoder.decode(password, StandardCharsets.UTF_8.toString());
                 if (passwordAuthentication.authenticate(decodedPassword.toCharArray(), hashedPassword)) {
-                    System.out.println("Authentication SUCCEEDED");
                     results.add(user);
                 } else {
-                    System.out.println("Authentication FAILED");
                     results = new ArrayList<>();
                 }
             } else {
                 System.out.println("results = EMPTY");
             }
-
-            /*if (!results.isEmpty()) {
-                PasswordAuthentication passwordAuthentication = new PasswordAuthentication(16);
-                String hashedPassword = results.get(0).getPassword();
-                System.out.println("hashedPassword = " + hashedPassword);
-                String decodedPassword = URLDecoder.decode(password, StandardCharsets.UTF_8.toString());
-                if (passwordAuthentication.authenticate(decodedPassword.toCharArray(), hashedPassword)) {
-                    System.out.println("Authentication SUCCEEDED");
-                } else {
-                    System.out.println("Authentication FAILED");
-                    results = new ArrayList<>();
-                }
-            } else {
-                System.out.println("results = EMPTY");
-            }*/
-            //em.close();
             return results;
         } catch (UnsupportedEncodingException e) {
             e.printStackTrace();
@@ -343,7 +462,6 @@ public class UserFacadeREST extends AbstractFacade<User> {
             em.close();
         }
     }
-
 
     public User findByLoginNameNative(String login) {
 
@@ -421,7 +539,7 @@ public class UserFacadeREST extends AbstractFacade<User> {
             company.setProjectList(new ArrayList<>());
             company.setAssetList(new ArrayList<>());
             company.setUserList(new ArrayList<>());
-            company.setContractList(new ArrayList<>());
+            //company.setContractList(new ArrayList<>());
             for (Disipline disipline : company.getDisiplineList()) {
                 disipline.setCompanyList(new ArrayList<>());
             }
@@ -431,6 +549,66 @@ public class UserFacadeREST extends AbstractFacade<User> {
         }
         return resultList;
     }
+
+    @GET
+    @Path("loadPartnerUsers/{authorityId}/{customerId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<User> loadPartnerUsers(@PathParam("authorityId") String authorityId, @PathParam("customerId") String customerId) {
+        String sqlQuery = """
+                SELECT u.*, concat(cust.name,cust.lastname,' ',cust.firstname) as companyName, cust.company_id as companyId, con.contract_type as contractType \s
+                FROM user u
+                         JOIN company_has_user chu ON u.user_id = chu.user
+                         JOIN contract con ON chu.company = con.partner
+                         JOIN company cust on con.partner = cust.company_id
+                WHERE con.company = ?1
+                  AND (con.contract_type = 'ENTREPRENEUR' or con.partner = ?2)
+                """;
+
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<Object[]> results = em.createNativeQuery(sqlQuery /*, "UserResultMapping"*/)
+                .setParameter(1, authorityId)
+                .setParameter(2, customerId)
+                .getResultList();
+
+        List<User> userList = new ArrayList<>();
+        for (int i = 0; i < results.size(); i++) {
+            User user = new User();
+            user.setUserId((String) results.get(i)[0]);
+            if (results.get(i)[1] != null) {
+                user.setUserToken((String) results.get(i)[1]);
+            }
+            if (results.get(i)[2] != null) {
+                user.setFirstname((String) results.get(i)[2]);
+            }
+            if (results.get(i)[3] != null) {
+                user.setLastname((String) results.get(i)[3]);
+            }
+            if (results.get(i)[4] != null) {
+                user.setPhone((String) results.get(i)[4]);
+            }
+            if (results.get(i)[5] != null) {
+                user.setEmail((String) results.get(i)[5]);
+            }
+            if (results.get(i)[8] != null) {
+                user.setMobile((String) results.get(i)[8]);
+            }
+            if (results.get(i)[12] != null) {
+                user.setJobTitle((String) results.get(i)[12]);
+            }
+            if (results.get(i)[22] != null) {
+                user.setPartnerName((String) results.get(i)[22]);
+            }
+            if (results.get(i)[23] != null) {
+                user.setPartnerId((String) results.get(i)[23]);
+            }
+            if (results.get(i)[24] != null) {
+                user.setPartnerType((String) results.get(i)[24]);
+            }
+            userList.add(user);
+        }
+        return userList;
+    }
+
 
     @GET
     @Path("loadUserCompaniesOptimized2/{userId}")
@@ -451,8 +629,10 @@ public class UserFacadeREST extends AbstractFacade<User> {
             //company.getAssetList().clear();
             company.setProjectList(new ArrayList<>());
             company.setAssetList(new ArrayList<>());
-            company.setUserList(new ArrayList<>());
+            //company.setUserList(new ArrayList<>());
             company.setContractList(new ArrayList<>());
+            company.setInvoiceList(new ArrayList<>());
+            company.setUserRoleList(new ArrayList<>());
             //company.getDisiplineList().clear();
             for (Disipline disipline : company.getDisiplineList()) {
                 disipline.getCompanyList().clear();
@@ -480,7 +660,7 @@ public class UserFacadeREST extends AbstractFacade<User> {
                 .setParameter(1, companyId)
                 .getResultList();
         em.close();
-        for(User user: resultList) {
+        for (User user : resultList) {
             user.defaultCompanyName = user.getCompanyName();
         }
         return resultList;
@@ -492,21 +672,21 @@ public class UserFacadeREST extends AbstractFacade<User> {
     public List<User> loadByCompanyWithSubsidiaries(@PathParam("companyId") String companyId) {
         List<User> companyUsers = loadByCompanyAll(companyId);
         Collections.sort(companyUsers, Comparator.comparing(User::getLastNameFirst));
-        for(User user: companyUsers) {
+        for (User user : companyUsers) {
             user.defaultCompanyName = user.getCompanyName();
         }
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
         List<User> resultList = (List<User>) em.createNativeQuery(
                         "SELECT u.* FROM contract con\n" +
-                        "JOIN company c on c.company_id = con.partner\n" +
-                        "JOIN company_has_user chu on chu.company = c.company_id\n" +
-                        "JOIN user u on u.user_id = chu.user\n" +
-                        "WHERE con.company = ?1 AND con.contract_type = 'SUBSIDIARY'",
+                                "JOIN company c on c.company_id = con.partner\n" +
+                                "JOIN company_has_user chu on chu.company = c.company_id\n" +
+                                "JOIN user u on u.user_id = chu.user\n" +
+                                "WHERE con.company = ?1 AND con.contract_type = 'SUBSIDIARY'",
                         User.class)
                 .setParameter(1, companyId)
                 .getResultList();
         em.close();
-        for(User user: resultList) {
+        for (User user : resultList) {
             user.defaultCompanyName = user.getCompanyName();
         }
         Collections.sort(resultList, Comparator.comparing(User::getLastNameFirst));
@@ -632,6 +812,7 @@ public class UserFacadeREST extends AbstractFacade<User> {
             em.close();
         }
     }
+
     @PUT
     @Path("linkToCompany/{companyId}")
     @Consumes({MediaType.APPLICATION_JSON})
@@ -745,43 +926,48 @@ public class UserFacadeREST extends AbstractFacade<User> {
         }
         List<User> resultList = new ArrayList<>();
         if (opplysningen1881Result != null) {
-            for (Contacts resultItem : opplysningen1881Result.getContacts()) {
-                User user = new User();
-                user.setUserId(UUID.randomUUID().toString());
-                if (isSearching) {
-                    String formattedAddress = resultItem.getPostCode() + " " + resultItem.getPostArea();
-                    user.setFormattedAddress(formattedAddress);
+            if(opplysningen1881Result.getContacts() != null) {
+                for (Contacts resultItem : opplysningen1881Result.getContacts()) {
+                    User user = new User();
+                    user.setUserId(UUID.randomUUID().toString());
+                    if (isSearching) {
+                        String formattedAddress = resultItem.getPostCode() + " " + resultItem.getPostArea();
+                        user.setFormattedAddress(formattedAddress);
 
-                    String[] names = resultItem.getName().split(" ");
-                    if (names.length > 1) {
-                        String firstname = "";
-                        String lastname = "";
-                        for (int i = 0; i < names.length - 1; i++) {
-                            firstname = firstname + names[i];
-                            if (i < names.length - 2) {
-                                firstname = firstname + " ";
+                        String[] names = resultItem.getName().split(" ");
+                        if (names.length > 1) {
+                            String firstname = "";
+                            String lastname = "";
+                            for (int i = 0; i < names.length - 1; i++) {
+                                firstname = firstname + names[i];
+                                if (i < names.length - 2) {
+                                    firstname = firstname + " ";
+                                }
                             }
+                            lastname = names[names.length - 1];
+                            user.setFirstname(firstname);
+                            user.setLastname(lastname);
+                            user.setUserToken(resultItem.id);
                         }
-                        lastname = names[names.length - 1];
-                        user.setFirstname(firstname);
-                        user.setLastname(lastname);
-                        user.setUserToken(resultItem.id);
+                    } else {
+                        user.setFirstname(resultItem.getFirstName());
+                        user.setLastname(resultItem.getLastName());
                     }
-                } else {
-                    user.setFirstname(resultItem.getFirstName());
-                    user.setLastname(resultItem.getLastName());
-                }
-                if (!resultItem.getContactPoints().isEmpty()) {
-                    ContactPoints contactPoints = resultItem.getContactPoints().get(0);
-                    user.setMobile(contactPoints.getValue());
-                }
-                user.setCreateRequested(true);
-                user.setSearchService("Search1881");
-                if (resultItem.getGeography() != null) {
-                    user.setFormattedAddress(resultItem.getGeography().getAddress().getAddressString());
-                }
-                if (!user.getFirstname().isEmpty() || !user.getLastname().isEmpty()) {
-                    resultList.add(user);
+                    if (!resultItem.getContactPoints().isEmpty()) {
+                        ContactPoints contactPoints = resultItem.getContactPoints().get(0);
+                        user.setMobile(contactPoints.getValue());
+                    }
+                    user.setCreateRequested(true);
+                    user.setSearchService("Search1881");
+
+                    if (resultItem.getGeography() != null) {
+                        if (resultItem.getGeography().getAddress() != null) {
+                            user.setFormattedAddress(resultItem.getGeography().getAddress().getAddressString());
+                        }
+                    }
+                    if (!user.getFirstname().isEmpty() || !user.getLastname().isEmpty()) {
+                        resultList.add(user);
+                    }
                 }
             }
         }

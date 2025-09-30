@@ -62,7 +62,7 @@ public class TopicFacadeREST extends AbstractFacade<Topic> {
             //project.getTopicList().add(topic);
             //topic.setProject(project);
             this.edit(topic);
-            projectFacadeREST.edit(project);
+            projectFacadeREST.editProjectOnly(project.getProjectId(),project);
         }
     }
 

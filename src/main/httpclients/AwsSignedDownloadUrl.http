@@ -1,0 +1,29 @@
+@baseUrl = https://api.thermidoc.com/iDocWebServices/webresources/aws.s3.storage/
+@key = dev/test-http-client.txt
+@expires = 600
+@auth = Basic QXBwbGljYXRpb25Vc2VyOkloYWR0aGlzdGhpbmc5Njk5MDY=
+@outfile = downloaded-test-http-client.txt
+
+### @name presignDownload
+POST {{baseUrl}}download
+Content-Type: application/json
+Authorization: {{auth}}
+
+{
+  "key": "{{key}}",
+  "expiresInSeconds": {{expires}}
+}
+
+> {%
+    const data = JSON.parse(response.body);
+    if (!data || !data.url) {
+        throw new Error("Manglende 'url' i responsen fra presign-endepunktet");
+    }
+    client.global.set("downloadUrl", data.url);
+%}
+
+### Last ned fra S3 med presigned URL (kjør Run All Requests)
+GET https://api-thermidoc-storage.s3.eu-central-1.amazonaws.com/dev/test-http-client.txt?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEFUaDGV1LWNlbnRyYWwtMSJIMEYCIQDiqLM295FYY6wwEZOfKr2AcHEj4bcbN8FRZNtg5tnZDQIhANIxDFTBjCiipQzRXxhU6Coba8fvIayVUvdeQZJOeo7PKsUFCN7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQAxoMNTAyNjQxNDY4MTA2IgwYQFJd52PatvmEW0cqmQWjC6g%2FLiGdf9anpzcVAbrL6jl2Mvw4BcxeSRDChzccoJuwQANbXJ1OsXZP0Tre%2BxGuxvuRnM70xN%2FyUeqBSXeTRXLS2xV7%2FxTlHRdWleTnJA%2F2f642z7ALXzzHGXFvzlri%2FQVTx3EpnpTmGPQ6B7oSD74P2JN%2B3USaQeHAsWKzZjaTmDkJ1gJI0KLzQryaH4p%2FmyASREdzRSb8R80GYmc908UprhI%2BmYnxNfs3h0dhWoUzv5o4K9paEYkHWIlqEQ9je1qjp1%2FKFVCF%2FtX9CUrwFSBsk3Ty4fMmoSGKIKoacoJrVoI%2F3jWdIQsj4jmkwHPG5t9hvTDlttOHOKXj5xC5oglVfJL0tLXcyjYLbvJ0b57WzZozJIkJ4sudjHL%2FMGocVUXl0LT06n82ExSVwemR9GOr1h1SbYXlFEgBSRrNUJdkBY2Kq5Vhc4LoNyFql8d8RTMgpTsgCLNV%2BDjX8Bvnd7taBjUc4eHeZ7s0OkrR%2FGtBe01I9W8MFNtHm%2BZIATF099bYqwCfyJAp1QOSmXamCntVOTuqT%2FbaWioqZGhn2TGf3uQ03Jph7W5Ovc6UXm6NPg108AyKaKFHBTzYhZmqtavH5LXI0Ui88hNq58hXK6RsR4%2F1MdBMPvSqJF4r%2BE%2FnE0FBCJsmy8F3BtWW8jwUWMwp2VegKx8hddNXMhf2f9KoO0FGAgnAOxKZTTlc5eOFeO8PmNl7pv%2FucfilywO5%2FXklraikDGy3h%2B8nBGqR6oGMA27B4RCDSLmEJu7G2bxkoXugAL7CoqZfIQVcUrTKWj7i%2BNEKJ3ooOYm0jIwFFMUbUprUvhP2c46wio%2BgkjkV9PzxbvYKOB3HEsFs4o6BkMh7jCbykKx%2BsEFPhrDEudBU%2B1yDOs%2BBDDCn2OvGBjqwAaTpdom4rPJT%2Bs8zErHAw72%2BjAicaLhuvLfd3bNGLl5U%2BKm06eSonSthJvLf4BgNrvSCNUKm7Na%2F3o8v0vK9O%2Bju5F3senTvtLNdgKr7z7uDggEsa5Kjr49eNGhEM7UR1%2FNy76swBE%2FSMRmz%2FteiU02MpabNcQ8gtEogTXFWpY%2Fi7bkEx45WZ4Y5mViGA%2F7FkNqWMv%2F9S9tkw8Zb4d9N6NfwAxalj7WA6c3%2FBRlAKMA5&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20250929T211324Z&X-Amz-SignedHeaders=host&X-Amz-Credential=ASIAXKB6EELFLOEEHNIR%2F20250929%2Feu-central-1%2Fs3%2Faws4_request&X-Amz-Expires=600&X-Amz-Signature=b46ef0ab301681d3a1a4f4b309eb70162ffda173ef7f68af104f957472c3e1eb
+
+# Lagre responsen til fil
+>> {{outfile}}

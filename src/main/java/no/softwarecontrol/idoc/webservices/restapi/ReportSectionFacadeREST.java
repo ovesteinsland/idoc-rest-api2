@@ -63,6 +63,7 @@ public class ReportSectionFacadeREST extends AbstractFacade<ReportSection> {
         ReportSection reportSection = find(entity.getReportSectionId());
         reportSection.setTitle(entity.getTitle());
         reportSection.setBody(entity.getBody());
+        reportSection.setIsHidden(entity.getIsHidden());
         reportSection.setIsIgnored(entity.getIsIgnored());
         reportSection.setSortIndex(entity.getSortIndex());
         super.edit(reportSection);

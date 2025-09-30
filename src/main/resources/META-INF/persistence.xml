@@ -14,45 +14,65 @@
         <class>no.softwarecontrol.idoc.data.entityobject.Role</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Notification</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Equipment</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.EquipmentType</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.EquipmentTypeLanguage</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.EventLog</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Location</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Address</class>
-        <class>no.softwarecontrol.idoc.data.entityobject.EquipmentType</class>
         <class>no.softwarecontrol.idoc.data.entityobject.AssetType</class>
         <class>no.softwarecontrol.idoc.data.entityobject.AssetGroup</class>
         <class>no.softwarecontrol.idoc.data.entityobject.UserContact</class>
         <class>no.softwarecontrol.idoc.data.entityobject.UserRole</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Disipline</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.DisiplineLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.ProjectGroup</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Conversation</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Message</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Topic</class>
         <class>no.softwarecontrol.idoc.data.entityobject.QuickChoiceItem</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.QuickChoiceItemLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.QuickChoiceGroup</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.QuickChoiceGroupLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Report</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.ReportLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.ReportSection</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.ReportSectionLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Deviation</class>
         <class>no.softwarecontrol.idoc.data.entityobject.LocationLevel</class>
         <class>no.softwarecontrol.idoc.data.entityobject.AnswerValue</class>
         <class>no.softwarecontrol.idoc.data.entityobject.CheckList</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.CheckListLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.CheckListAnswer</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.CheckListAnswerLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.CheckListQuestion</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.CheckListQuestionLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.CheckListSection</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.CheckListSectionLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.ControlInterval</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Measurement</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.MeasurementLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.MeasurementTrigger</class>
         <class>no.softwarecontrol.idoc.data.entityobject.ReportParameter</class>
         <class>no.softwarecontrol.idoc.data.entityhelper.CompanyHasAsset</class>
         <class>no.softwarecontrol.idoc.data.entityobject.ProjectPrivilege</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Certificate</class>
         <class>no.softwarecontrol.idoc.data.entityobject.KeyComponent</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.KeyComponentLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.KeyFault</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.KeyFaultLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Tool</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Invoice</class>
         <class>no.softwarecontrol.idoc.data.entityobject.InvoiceType</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Parameter</class>
         <class>no.softwarecontrol.idoc.data.entityobject.Integration</class>
+		<class>no.softwarecontrol.idoc.data.entityobject.Language</class>
+		<class>no.softwarecontrol.idoc.data.entityobject.DeviationGrade</class>
+		<class>no.softwarecontrol.idoc.data.entityobject.DeviationGradeLanguage</class>
+        <class>no.softwarecontrol.idoc.data.entityobject.ObservationLanguage</class>
         <class>no.softwarecontrol.idoc.data.entityhelper.WalletProject</class>
         <class>no.softwarecontrol.idoc.data.entityhelper.WalletCompany</class>
+        <class>no.softwarecontrol.idoc.data.entityresult.EquipmentResult</class>
+        <class>no.softwarecontrol.idoc.data.entityresult.UserResult</class>
         <exclude-unlisted-classes>true</exclude-unlisted-classes>
         <properties>
             <property name="eclipselink.cache.shared.default" value="false"/>

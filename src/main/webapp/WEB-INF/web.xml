@@ -9,8 +9,9 @@
     <servlet-class>org.glassfish.jersey.servlet.ServletContainer</servlet-class>
     <init-param>
       <param-name>jersey.config.server.provider.packages</param-name>
-      <param-value>no.softwarecontrol.idoc.webservices.restapi</param-value>
+      <param-value>no.softwarecontrol.idoc.webservices.restapi;no.softwarecontrol.idoc.filter</param-value>
      </init-param>
+
     <load-on-startup>0</load-on-startup>
   </servlet>
   <servlet-mapping>
@@ -29,6 +30,15 @@
   </servlet-mapping>
 
   <filter>
+    <filter-name>CorsFilter</filter-name>
+    <filter-class>no.softwarecontrol.idoc.filter.CorsFilter</filter-class>
+  </filter>
+  <filter-mapping>
+    <filter-name>CorsFilter</filter-name>
+    <url-pattern>/*</url-pattern>
+  </filter-mapping>
+
+  <filter>
     <filter-name>BasicAuthenticationFilter</filter-name>
     <filter-class>no.softwarecontrol.idoc.filter.BasicAuthenticationFilter</filter-class>
     <init-param>
@@ -39,12 +49,17 @@
       <param-name>password</param-name>
       <param-value>Ihadthisthing969906</param-value>
     </init-param>
+    <init-param>
+      <param-name>disableBasicOnPaths</param-name>
+      <param-value>/iDocWebServices/webresources/no.softwarecontrol.idoc.entityobject.sms,/idoc_rest_api2_war/iDocWebServices/webresources/no.softwarecontrol.idoc.entityobject.sms</param-value>
+    </init-param>
   </filter>
-
   <filter-mapping>
     <filter-name>BasicAuthenticationFilter</filter-name>
-    <!--url-pattern>/download</url-pattern-->
-    <!--url-pattern>/iDocWebServices/SendMailServlet</url-pattern-->
     <url-pattern>/iDocWebServices/webresources/*</url-pattern>
   </filter-mapping>
+
 </web-app>
+
+
+

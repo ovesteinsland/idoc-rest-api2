@@ -8,6 +8,7 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityobject.KeyComponent;
+import no.softwarecontrol.idoc.data.entityobject.KeyFault;
 
 import java.util.List;
 
@@ -33,9 +34,16 @@ public class KeyComponentFacadeREST extends AbstractFacade<KeyComponent>  {
     }
 
     @GET
+    @Override
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<KeyComponent> findAll() {
+        return super.findAll();
+    }
+
+    @GET
     @Path("{id}")
     @Produces({MediaType.APPLICATION_JSON})
-    public List<KeyComponent> find(@PathParam("id") String id) {
-        return super.findAll();
+    public KeyComponent find(@PathParam("id") String id) {
+        return super.find(id);
     }
 }

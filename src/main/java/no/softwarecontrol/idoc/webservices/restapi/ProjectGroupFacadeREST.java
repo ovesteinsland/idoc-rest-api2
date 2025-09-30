@@ -89,7 +89,7 @@ public class ProjectGroupFacadeREST extends AbstractFacade<ProjectGroup> {
         if (project != null && projectGroup != null) {
             if (!projectGroup.getProjectList().contains(project)) {
                 projectGroup.getProjectList().add(project);
-                projectFacadeREST.edit(project);
+                projectFacadeREST.editProjectOnly(project.getProjectId(),project);
             }
             project.setProjectGroup(projectGroup);
             this.edit(projectGroup);

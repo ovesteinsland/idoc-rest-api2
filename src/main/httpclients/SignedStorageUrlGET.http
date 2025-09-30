@@ -1,0 +1,13 @@
+### Be om signed URL (Basic Auth korrekt)
+POST http://localhost:8080/idoc_rest_api2_war/iDocWebServices/webresources/google.cloud.storage/signed-url
+Content-Type: application/json
+Authorization: Basic QXBwbGljYXRpb25Vc2VyOkloYWR0aGlzdGhpbmc5Njk5MDY=
+
+{
+  "bucket": "idocdatabase-developement.appspot.com",
+  "objectName": "software-control/uploads/test.txt",
+  "method": "GET",
+  "expiresMinutes": 10
+}
+
+

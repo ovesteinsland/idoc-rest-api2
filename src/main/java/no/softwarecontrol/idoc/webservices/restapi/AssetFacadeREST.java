@@ -5,6 +5,11 @@
  */
 package no.softwarecontrol.idoc.webservices.restapi;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
@@ -376,7 +381,35 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
         Asset asset = findNative(id);
         //asset.getEquipmentList().clear();
         asset.setEquipmentList(new ArrayList<>());
+        //asset.setLocationList(new ArrayList<>());
         return  asset;
+    }
+
+    @GET
+    @Path("loadOptimizedTEXT/{id}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public String loadOptimizedTEXT(@PathParam("id") String id) throws JsonProcessingException {
+        Asset asset = findNative(id);
+        //asset.getEquipmentList().clear();
+        asset.setEquipmentList(new ArrayList<>());
+        for(Media media: asset.getImageList()) {
+            media.getAssetList().clear();
+        }
+        for(Location location: asset.getLocationList()) {
+            location.setAsset(null);
+        }
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new com.fasterxml.jackson.module.jakarta.xmlbind.JakartaXmlBindAnnotationModule());
+
+        objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        objectMapper.configure(SerializationFeature.WRITE_SELF_REFERENCES_AS_NULL, true);
+
+        String assetAsString = null;
+
+        assetAsString = objectMapper.writeValueAsString(asset);
+
+        //asset.setLocationList(new ArrayList<>());
+        return  assetAsString;
     }
 
     @GET
@@ -386,7 +419,7 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
         return findNative(id);
     }
 
-    private Asset findNative(String id) {
+    public Asset findNative(String id) {
 
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
         List<Asset> resultList = (List<Asset>) em.createNativeQuery("SELECT "
@@ -402,6 +435,11 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
             for(Asset asset: resultList) {
                 if(asset.getAssetGroup() != null) {
                     asset.setAssetGroupId(asset.getAssetGroup().getAssetGroupId());
+                }
+                // EMERGENCY-OPTIMIZING: Added for loop Dec. 4th, 2023
+                for(Equipment equipment: asset.getEquipmentList()) {
+                    equipment.setMeasurementList(new ArrayList<>());
+                    equipment.setNameString(equipment.getFullName());
                 }
             }
             return resultList.get(0);

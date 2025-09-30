@@ -9,6 +9,7 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.Query;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityhelper.*;
@@ -21,11 +22,13 @@ import no.softwarecontrol.idoc.restclient.brreg.Enhet;
 import no.softwarecontrol.idoc.web.signup.SignupTask;
 import no.softwarecontrol.idoc.webservices.brreg.BrregJsonClient;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
+import org.joda.time.DateTime;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -60,6 +63,9 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
     @Override
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(Company entity) {
+        if(entity.getIsLiteAccount() == null) {
+            entity.setIsLiteAccount(false);
+        }
         super.create(entity);
     }
 
@@ -99,6 +105,9 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
         ContractFacadeREST contractFacadeREST = new ContractFacadeREST();
         // Check if partner exist in iDoc already
         boolean isPartnerAlready = false;
+        if(partner.getIsLiteAccount() == null) {
+            partner.setIsLiteAccount(false);
+        }
         List<Company> existingCompanies = new ArrayList<>();
         if (!partner.getOrganizationNumber().isEmpty()) {
             existingCompanies = queryByOrganizationNumber(partner.getOrganizationNumber());
@@ -137,8 +146,6 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
             partner.getPartnerContracts().add(contract);
             company.getContractList().add(contract);
             contractFacadeREST.edit(contract);
-        } else {
-            //edit(partner);
         }
         return partner;
     }
@@ -272,7 +279,7 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
     @Produces({MediaType.APPLICATION_JSON})
     public Company findOptimized(@PathParam("id") String id) {
         Company company = findNative(id);
-        Company temp = company.duplicate();
+        //Company temp = company.duplicate();
 
         List<AssetGroup> tempAssetGroups = new ArrayList<>();
         for (AssetGroup assetGroup : company.getAssetGroupList()) {
@@ -281,16 +288,22 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
             tempAssetGroup.setAssetList(tempList);
             tempAssetGroups.add(tempAssetGroup);
         }
-        temp.setAssetGroupList(tempAssetGroups);
-        temp.setAssetList(new ArrayList<>());
-        temp.setUserList(new ArrayList<>());
-        temp.setProjectList(new ArrayList<>());
-        temp.setReportList(new ArrayList<>());
-        temp.setContractList(new ArrayList<>());
+        company.setAssetGroupList(tempAssetGroups);
+        company.setAssetList(new ArrayList<>());
+        company.setUserList(new ArrayList<>());
+        company.setProjectList(new ArrayList<>());
+        //company.setReportList(new ArrayList<>());
+        company.setContractList(new ArrayList<>());
+        company.setInvoiceList(new ArrayList<>());
+        for(Disipline disipline: company.getDisiplineList()) {
+            disipline.setEquipmentTypeList(new ArrayList<>());
+            disipline.setParameterList(new ArrayList<>());
+
+        }
         //temp.getAssetList().clear();
         //temp.getUserList().clear();
 
-        return temp;
+        return company;
     }
 
     @GET
@@ -530,6 +543,95 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
         return companyItems;
     }
 
+    @GET
+    @Path("loadAuthorityItems")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<CompanyItem> loadAuthorityItems() {
+        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<CompanyItem> companyItems = new ArrayList<>();
+        String sqlQuery = """
+                select
+                    *
+                from company c
+                where c.company_type = 'AUTHORITY'
+                order by concat(c.name)
+                """;
+
+        List<Company> resultList = (List<Company>) em.createNativeQuery(
+                        sqlQuery,
+                        Company.class)
+                .getResultList();
+
+        for(Company company: resultList) {
+            List<Invoice> invoices = company.getInvoiceList();
+            if(!invoices.isEmpty()) {
+
+                List<Invoice> lastItems = invoices.stream().filter(
+                                r -> r.getEndDate() == null)
+                        .collect(Collectors.toList());
+                if(!lastItems.isEmpty()) {
+                    Invoice invoice = lastItems.get(0);
+                    String counterQuery = """
+                            select
+                                sum(ppC.projectCounter) as totalPoints
+                            from
+                                (select
+                                    p.project_number as projectNumber,
+                                    (select IF(customer.demo = 1, 0.0,
+                                               (select least(greatest(count(*), 1) * d.point_price, d.max_children * d.point_price)
+                                                from project child
+                                                        where child.parent = p.project_id
+                                                          and (child.deleted = 0 or child.deleted is null)))
+                                    from company customer
+                                           join company_has_project chp on customer.company_id = chp.company_company_id
+                                    where chp.project_project_id = p.project_id and customer.company_type = 'OWNER' limit 0,1) as projectCounter
+                                from project p
+                                    join disipline d on p.disipline = d.disipline_id
+                                where \n""";
+                    SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+                    dateFormatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+                    String strStartDate = dateFormatter.format(invoice.getStartDate());
+                    counterQuery += "p.created_date > '" + strStartDate + "' and ";
+                    counterQuery += "p.created_company = '" + company.getCompanyId() + "' and ";
+                    counterQuery += """
+                                    (p.deleted = 0 or p.deleted is null) and
+                                            p.parent is null
+                                        order by p.project_number desc
+                                    ) as ppC
+                            """;
+                    Query queryCounter = em.createNativeQuery(counterQuery);
+                    Number counterUnassigned = (Number) queryCounter.getSingleResult();
+                    CompanyItem companyItem = new CompanyItem(company);
+                    companyItem.setPointLimit(invoice.getPointLimit());
+                    if (counterUnassigned != null) {
+                        Double counter = Double.parseDouble(counterUnassigned.toString());
+                        counter += invoice.getPointTransfered();
+                        companyItem.setPointCount(counter);
+                    } else {
+                        companyItem.setPointCount(0.0);
+                    }
+                    companyItems.add(companyItem);
+                }
+            }
+        }
+        return companyItems;
+    }
+
+    @GET
+    @Path("getAuthorityIds")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<String> getAuthorityIds() {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        String sqlQuery = """    
+                          SELECT c.companyId FROM company c
+                          WHERE c.company_type = "AUTHORITY"
+                          """;
+        List<String> resultList = (List<String>) em.createNativeQuery(
+                sqlQuery,
+                String.class);
+        return resultList;
+    }
 
     @GET
     @Path("loadCompanyItems/{companyid}/{batchOffset}/{batchSize}")
@@ -542,113 +644,149 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
         int size = Integer.parseInt(batchSize);
 
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        //findByCompanyId
-        String sqlQuery = "SELECT \n" +
-                "    wallet_company.authority_id as authority_id,\n" +
-                "    wallet_company.authority_name as authority_name, \n" +
-                "    wallet_company.authority_address,\n" +
-                "    wallet_company.demo_expire_date,\n" +
-                "    wallet_company.disipline, \n" +
-                "    sum(wallet_company.least_counter) as point_counter, \n" +
-                "    wallet_company.point_limit, \n" +
-                "    wallet_company.point_transfered, \n" +
-                "    wallet_company.package_price, \n" +
-                "    wallet_company.package_discount, \n" +
-                "    sum(wallet_company.revenue * wallet_company.package_discount) as revenue,\n" +
-                "    wallet_company.start_date as invoice_start_date,\n" +
-                "    company_image\n" +
-                "FROM\n" +
-                "(SELECT \n" +
-                "   authority.company_id as authority_id,\n" +
-                "   authority.name as authority_name,\n" +
-                "   authority.expire_date as demo_expire_date,\n" +
-                "   d.name as disipline,\n" +
-                "   p.name as project_name,\n" +
-                "   p.disipline as project_disipline,\n" +
-                "   p.created_date as project_date,\n" +
-                "   d.max_children,\n" +
-                "   d.point_price as point_factor,\n" +
-                "   i.point_limit as point_limit,\n" +
-                "   i.point_transfered as point_transfered,\n" +
-                "   i.point_price,\n" +
-                "   i.point_price as package_price,\n" +
-                "   i.point_discount as package_discount,\n" +
-                "   least(count(p.project_id),d.max_children) * d.point_price as least_counter,\n" +
-                "   least(count(p.project_id),d.max_children) * d.point_price * i.point_price as revenue,\n" +
-                "   i.start_date as start_date,\n" +
-                "   (select \n" +
-                "       img.image_id\n" +
-                "    from company\n" +
-                "       join company_has_image chi on chi.company = company.company_id\n" +
-                "       join image img on img.image_id = chi.image\n" +
-                "    where \n" +
-                "       company.company_id = authority.company_id\n" +
-                "    limit 0,1\n" +
-                "   ) as company_image,\n" +
-                "   (select \n" +
-                "       concat(addr.address1, ', ', addr.zip_code, ' ', addr.city, ' - ', addr.country)\n" +
-                "   from company\n" +
-                "       join company_has_address cha on cha.company_company_id = company.company_id\n" +
-                "       join address addr on addr.address_id = cha.address_address_id\n" +
-                "   where \n" +
-                "       addr.zip_code != \"\" and\n" +
-                "       cha.company_company_id = authority.company_id\n" +
-                "       limit 0,1\n" +
-                "   ) as authority_address\n" +
-                "    \n" +
-                "FROM company as authority\n" +
-                "   left join invoice i on i.company = authority.company_id\n" +
-                "   left join project p on p.created_company = authority.company_id\n" +
-                "   left join disipline d on p.disipline = d.disipline_id\n" +
-                "   left join project child on child.parent = p.project_id\n" +
-                "WHERE \n" +
-                "   authority.company_type = \"AUTHORITY\" and\n" +
-                "   p.created_company != \"E07121A7-024A-4D0E-8B58-A064F0BC4A22\" and\n" +
-                "   p.created_company = authority.company_id and\n" +
-                "   i.end_date is null and\n" +
-                "   p.parent is null and\n" +
-                "   (p.deleted = 0 or p.deleted is null) AND     \n" +
-                "   (child.deleted = 0 or child.deleted is null) and    \n" +
-                "   p.created_date > i.start_date\n" +
-                "group by authority.company_id, p.project_id\n" +
-                "order by authority.name) as wallet_company\n" +
-                "group by wallet_company.authority_id\n" +
-                "order by authority_name LIMIT ?2,?3";
+//        String sqlQuery = """
+//                    SELECT
+//                        c.company_id as authority_id,
+//                        c.name as authority_name,
+//                           (select
+//                           concat(addr.address1, ', ', addr.zip_code, ' ', addr.city, ' - ', addr.country)
+//                       from company
+//                           join company_has_address cha on cha.company_company_id = company.company_id
+//                           join address addr on addr.address_id = cha.address_address_id
+//                       where
+//                           addr.zip_code != '' and
+//                           cha.company_company_id = c.company_id
+//                           limit 0,1
+//                       ) as authority_address,
+//                        c.expire_date as demo_expire_date,
+//                        '' as disipline,
+//                        ifnull(iDocDatabase.GetPointCounter(
+//                            c.company_id,
+//                            (select
+//                                           i.start_date
+//                                        from company
+//                                           join invoice i on company.company_id = i.company
+//                                        where
+//                                           company.company_id = c.company_id and i.end_date is null
+//                                        limit 0,1)),0.0) as point_counter,
+//                        ifnull((select
+//                          i.point_limit
+//                        from company
+//                           join invoice i on company.company_id = i.company
+//                        where
+//                           company.company_id = c.company_id and i.end_date is null
+//                        limit 0,1
+//                        ),0.0) as point_limit,
+//
+//                        ifnull((select
+//                           i.point_transfered
+//                        from company
+//                           join invoice i on company.company_id = i.company
+//                        where
+//                           company.company_id = c.company_id and i.end_date is null
+//                        limit 0,1
+//                       ),0) as point_transfered,
+//                       0.0 as package_price,
+//                       1.0 as package_discount,
+//                       0.0 as revenue,
+//                        (select
+//                           i.start_date
+//                        from company
+//                           join invoice i on company.company_id = i.company
+//                        where
+//                           company.company_id = c.company_id and i.end_date is null
+//                        limit 0,1
+//                       ) as invoice_start_date,
+//                           (select
+//                           img.image_id
+//                        from company
+//                           join company_has_image chi on chi.company = company.company_id
+//                           join image img on img.image_id = chi.image
+//                        where
+//                           company.company_id = c.company_id
+//                        limit 0,1
+//                       ) as company_image
+//                    FROM company c
+//
+//                    WHERE c.company_type = 'AUTHORITY'
+//                    ORDER BY c.name
+//                    """;
+        String sqlQuery = """                      
+                    SELECT
+                        c.company_id as authority_id,
+                        c.name as authority_name,
+                        c.expire_date as demo_expire_date,
+                        '' as disipline,
+                        ifnull(iDocDatabase.GetPointCounter(
+                            c.company_id,
+                            (select
+                                           i.start_date
+                                        from company
+                                           join invoice i on company.company_id = i.company
+                                        where
+                                           company.company_id = c.company_id and i.end_date is null
+                                        limit 0,1)),0.0) as point_counter,
+                        ifnull((select
+                          i.point_limit
+                        from company
+                           join invoice i on company.company_id = i.company
+                        where
+                           company.company_id = c.company_id and i.end_date is null
+                        limit 0,1
+                        ),0.0) as point_limit,
+                    
+                        ifnull((select
+                           i.point_transfered
+                        from company
+                           join invoice i on company.company_id = i.company
+                        where
+                           company.company_id = c.company_id and i.end_date is null
+                        limit 0,1
+                       ),0) as point_transfered,
+                       0.0 as package_price,
+                       1.0 as package_discount,
+                       0.0 as revenue,
+                        (select
+                           i.start_date
+                        from company
+                           join invoice i on company.company_id = i.company
+                        where
+                           company.company_id = c.company_id and i.end_date is null
+                        limit 0,1
+                       ) as invoice_start_date
+                    FROM company c
+                    
+                    WHERE c.company_type = 'AUTHORITY'
+                    ORDER BY c.name
+                    """;
         List<WalletCompany> resultList = (List<WalletCompany>) em.createNativeQuery(
                 sqlQuery,
                 WalletCompany.class)
-                .setParameter(1, id)
-                .setParameter(2, offset)
-                .setParameter(3, size)
                 .getResultList();
         for (WalletCompany walletCompany : resultList) {
             CompanyItem companyItem = new CompanyItem(walletCompany);
             //calculatePackagePoints(companyItem, company);
-            companyItems.add(companyItem);
+            if(companyItem.getPointCount()/companyItem.getPointLimit() > 0.8) {
+                companyItems.add(companyItem);
+            }
         }
 
         // Find companies which have not started invoices
 
-        List<Company> authorities = loadAuthorities();
-        Collections.sort(authorities, (Company o1, Company o2) -> o1.getFullName().compareTo(o2.getFullName()));
-        for (Company authority : authorities) {
-            CompanyItem authorityItem = new CompanyItem(authority);
-            boolean exists = false;
-            for (CompanyItem companyItem : companyItems) {
-                if (companyItem.getCompanyId().equalsIgnoreCase(authorityItem.getCompanyId())) {
-                    exists = true;
-                }
-            }
-            if (!exists) {
-                companyItems.add(authorityItem);
-            }
-//            List<CompanyItem> existing = companyItems.stream()
-//                    .filter(r ->r.getCompanyId() == authorityItem.getCompanyId())
-//                    .collect(Collectors.toList());
-//            if(existing.isEmpty()) {
+//        List<Company> authorities = loadAuthorities();
+//        Collections.sort(authorities, (Company o1, Company o2) -> o1.getFullName().compareTo(o2.getFullName()));
+//        for (Company authority : authorities) {
+//            CompanyItem authorityItem = new CompanyItem(authority);
+//            boolean exists = false;
+//            for (CompanyItem companyItem : companyItems) {
+//                if (companyItem.getCompanyId().equalsIgnoreCase(authorityItem.getCompanyId())) {
+//                    exists = true;
+//                }
+//            }
+//            if (!exists) {
 //                companyItems.add(authorityItem);
 //            }
-        }
+//        }
         em.close();
         return companyItems;
     }
@@ -708,6 +846,7 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
         }
         return counter;
     }
+
 
 
     @GET
@@ -775,7 +914,38 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
         return resultList;
     }
 
+    @Deprecated
     @GET
+    @Path("loadSubsidiaries/{companyid}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Company> loadSubsidiaries(@PathParam("companyid") String id){
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        String sqlString = """
+                SELECT DISTINCT customer.*
+                FROM company c
+                         JOIN contract cont
+                              ON c.company_id = cont.company
+                         JOIN company customer
+                              ON cont.partner = customer.company_id
+                WHERE cont.contract_type = 'SUBSIDIARY' AND c.company_id = ?1
+                ORDER BY CONCAT(customer.name, customer.lastname, ', ', customer.firstname) COLLATE utf8mb4_danish_ci ASC
+                """;
+
+        List<Company> companies = (List<Company>) em.createNativeQuery(sqlString, Company.class)
+                .setParameter(1, id)
+                .getResultList();
+        em.close();
+
+        List<Company> optimizedCompanies = new ArrayList<>();
+        for (Company company : companies) {
+            optimizedCompanies.add(optimizeCompany(company));
+        }
+        return optimizedCompanies;
+    }
+
+
+
+        @GET
     @Path("loadByAsset/{assetId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Company> loadByAsset(@PathParam("assetId") String assetId) {
@@ -797,6 +967,7 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
             company.getDisiplineList().clear();
             company.getInvoiceList().clear();
             company.getReportList().clear();
+            company.getAssetGroupList().clear();
         }
         return optimizedCompanies;
     }
@@ -815,6 +986,25 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
         return optimizedCompanies;
     }
 
+    @GET
+    @Path("countByAuthority/{authorityId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public Integer countByAuthority(@PathParam("authorityId") String authorityId) {
+
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        Query query = em.createNativeQuery("SELECT COUNT(*) \n"
+                                + "FROM company c\n"
+                                + "JOIN contract cont\n"
+                                + "    on c.company_id = cont.company\n"
+                                + "JOIN company customer\n"
+                                + "	on cont.partner = customer.company_id\n"
+                                + "WHERE c.company_id = ?1 ")
+                .setParameter(1, authorityId);
+
+        Number counter = (Number) query.getSingleResult();
+        return counter.intValue();
+    }
+
     private Company optimizeCompany(Company company) {
         Company temp = company.duplicate();
         temp.getUserList().clear();
@@ -823,10 +1013,12 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
             List<Asset> tempList = tempAssetGroup.getAssetList().subList(0, 0);
             tempAssetGroup.setAssetList(tempList);
         }
+        temp.setLanguageList(company.getLanguageList());
         temp.setProjectList(new ArrayList<>());
         temp.setAssetList(new ArrayList<>());
         temp.setContractList(new ArrayList<>());
         temp.setPartnerContracts(new ArrayList<>());
+        temp.setDefaultLanguageCode(company.getDefaultLanguageCode());
         return temp;
     }
 
@@ -871,6 +1063,21 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
             optimizedCompanies.add(optimizeCompany(company));
         }
         return optimizedCompanies;
+    }
+
+    @GET
+    @Path("loadUserCompaniesOptimized2/{userId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Company> loadUserCompaniesOptimized2(@PathParam("userId") String userId) {
+        List<Company> resultList = loadUserCompaniesOptimized(userId);
+        for (Company company : resultList) {
+            for(Disipline disipline : company.getDisiplineList()) {
+                disipline.setEquipmentTypeList(new ArrayList<>());
+                disipline.setMeasurementList(new ArrayList<>());
+            }
+            //company.setReportList(new ArrayList<>());
+        }
+        return resultList;
     }
 
 
@@ -1098,10 +1305,36 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
             optimizedCompanies.add(optimizeCompany(company));
         }
         for (Company company : optimizedCompanies) {
-            company.getDisiplineList().clear();
-            company.getAddressList().clear();
-            company.getReportList().clear();
-            company.getReportList().clear();
+            company.setDisiplineList(new ArrayList<>());
+            company.setAddressList(new ArrayList<>());
+            company.setAssetList(new ArrayList<>());
+            company.setAssetGroupList(new ArrayList<>());
+            //company.setReportList(new ArrayList<>());
+            company.setUserRoleList(new ArrayList<>());
+            company.setInvoiceList(new ArrayList<>());
+
+        }
+        return optimizedCompanies;
+    }
+
+    @GET
+    @Path("loadByProjectOptimized2/{projectId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Company> loadByProjectOptimized2(@PathParam("projectId") String projectId) {
+        List<Company> optimizedCompanies = new ArrayList<>();
+        List<Company> companies = loadByProjectId(projectId);
+        for (Company company : companies) {
+            optimizedCompanies.add(optimizeCompany(company));
+        }
+        for (Company company : optimizedCompanies) {
+            company.setDisiplineList(new ArrayList<>());
+            company.setAddressList(new ArrayList<>());
+            company.setAssetList(new ArrayList<>());
+            company.setAssetGroupList(new ArrayList<>());
+            company.setReportList(new ArrayList<>());
+            company.setUserRoleList(new ArrayList<>());
+            company.setInvoiceList(new ArrayList<>());
+
         }
         return optimizedCompanies;
     }
@@ -1252,6 +1485,9 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
         List<Company> sorted = new ArrayList<>();
         sorted.addAll(bestMatch);
         sorted.addAll(remaining);
+        for(Company company: sorted) {
+            optimizeCompany(company);
+        }
         return sorted;
     }
 

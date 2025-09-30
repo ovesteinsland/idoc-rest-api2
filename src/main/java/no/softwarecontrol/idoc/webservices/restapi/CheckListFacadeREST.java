@@ -11,9 +11,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityjson.CheckListLite;
-import no.softwarecontrol.idoc.data.entityobject.Asset;
-import no.softwarecontrol.idoc.data.entityobject.CheckList;
-import no.softwarecontrol.idoc.data.entityobject.Disipline;
+import no.softwarecontrol.idoc.data.entityobject.*;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
 
 import java.util.ArrayList;
@@ -65,11 +63,49 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     }
 
     @GET
+    @Path("loadOptimized/{id}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public CheckList loadOptimized(@PathParam("id") String id) {
+        CheckList checkList = super.find(id);
+        return optimize(checkList);
+    }
+
+    private CheckList optimize(CheckList optimized) {
+        for(Disipline disipline: optimized.getDisiplineList()) {
+            optimized.getDisiplineIds().add(disipline.getDisiplineId());
+        }
+        optimized.getDisiplineList().clear();
+        for(EquipmentType equipmentType: optimized.getEquipmentTypeList()) {
+            optimized.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+        }
+        optimized.getEquipmentTypeList().clear();
+        for(CheckListSection checkListSection: optimized.getCheckListSectionList()) {
+            for(CheckListQuestion checkListQuestion: checkListSection.getCheckListQuestionList()) {
+                for(EquipmentType equipmentType: checkListQuestion.getEquipmentTypeList()) {
+                    checkListQuestion.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+                }
+                checkListQuestion.getEquipmentTypeList().clear();
+                for(CheckListAnswer checkListAnswer: checkListQuestion.getCheckListAnswerList()) {
+                    for(QuickChoiceItem quickChoiceItem: checkListAnswer.getQuickChoiceItemList()) {
+                        checkListAnswer.getQuickChoiceItemIds().add(quickChoiceItem.getQuickChoiceItemId());
+                    }
+                    checkListAnswer.getQuickChoiceItemList().clear();
+                }
+            }
+        }
+        return optimized;
+    }
+
+    @GET
     @Path("root")
     @Produces({MediaType.APPLICATION_JSON})
     public List<CheckList> findRoot() {
         List<CheckList> roots = new ArrayList<>();
         List<CheckList> checkLists = this.findAll();
+        for(CheckList checkList: checkLists)
+        for(EquipmentType equipmentType: checkList.getEquipmentTypeList()) {
+            checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+        }
         for (CheckList checkList : checkLists) {
             if (checkList.getParent() == null) {
                 roots.add(checkList);
@@ -78,6 +114,72 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
         return roots;
     }
 
+    @GET
+    @Path("loadAllByDisiplines")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<CheckList> loadAllByDisiplines() {
+        String sql = """
+                select DISTINCT cl.* from disipline_has_check_list dhcl
+                join check_list cl on dhcl.check_list = cl.check_list_id
+                """;
+
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<CheckList> resultList = (List<CheckList>) em.createNativeQuery(sql, CheckList.class)
+                .getResultList();
+        em.close();
+        return resultList;
+    }
+
+    @GET
+    @Path("loadAllByDisiplinesLites")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<CheckListLite> loadAllByDisiplinesLites() {
+        List<CheckList> roots = loadAllByDisiplines();
+        List<CheckListLite> lites = new ArrayList<>();
+        for(CheckList checkList: roots) {
+            lites.add(new CheckListLite(checkList));
+        }
+        return lites;
+    }
+
+    @GET
+    @Path("loadAllByEquipmentTypes")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<CheckList> loadAllByEquipmentTypes() {
+        String sql = """
+                select DISTINCT cl.* from equipment_type_has_check_list ethcl
+                join check_list cl on ethcl.check_list_check_list_id = cl.check_list_id
+                
+                """;
+
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<CheckList> resultList = (List<CheckList>) em.createNativeQuery(sql, CheckList.class)
+                .getResultList();
+        em.close();
+
+        for(CheckList checkList: resultList) {
+            for(EquipmentType equipmentType: checkList.getEquipmentTypeList()) {
+                if(!checkList.getEquipmentTypeIds().contains(equipmentType.getEquipmentTypeId())) {
+                    checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+                }
+            }
+        }
+        return resultList;
+    }
+
+    @GET
+    @Path("loadAllByEquipmentTypesLites")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<CheckListLite> loadAllByEquipmentTypesLites() {
+        List<CheckList> roots = loadAllByEquipmentTypes();
+
+        List<CheckListLite> lites = new ArrayList<>();
+        for(CheckList checkList: roots) {
+            lites.add(new CheckListLite(checkList));
+
+        }
+        return lites;
+    }
 
     @GET
     @Path("loadByDisipline/{disiplineId}")
@@ -110,7 +212,25 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
                 .setParameter(1, equipmentTypeId)
                 .getResultList();
         em.close();
+        for(CheckList checkList: resultList) {
+            for (EquipmentType equipmentType : checkList.getEquipmentTypeList()) {
+                checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+            }
+        }
         return  resultList;
+    }
+
+    @GET
+    @Path("loadByEquipmentTypeOptimized/{equipmentTypeId}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<CheckList> loadByEquipmentTypeOptimized(@PathParam("equipmentTypeId") String equipmentTypeId) {
+        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        List<CheckList> resultList = loadByEquipmentType(equipmentTypeId);
+        List<CheckList> optimizedList = new ArrayList<>();
+        for(CheckList checkList: resultList) {
+            optimizedList.add(optimize(checkList));
+        }
+        return  optimizedList;
     }
 
     @GET

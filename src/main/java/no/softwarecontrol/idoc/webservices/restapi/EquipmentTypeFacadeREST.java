@@ -86,5 +86,16 @@ public class EquipmentTypeFacadeREST extends AbstractFacade<EquipmentType>{
         return super.findAll();
     }
 
+    @GET
+    @Path("loadAll")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<EquipmentType> loadAll() {
+        List<EquipmentType> equipmentTypes = super.findAll();
+        for(EquipmentType equipmentType: equipmentTypes) {
+            equipmentType.getEquipmentTypeList().clear();
+        }
+        return equipmentTypes;
+    }
+
     
 }

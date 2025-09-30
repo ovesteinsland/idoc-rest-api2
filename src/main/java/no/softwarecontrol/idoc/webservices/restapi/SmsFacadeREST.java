@@ -13,6 +13,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityobject.Sms;
 import no.softwarecontrol.idoc.keysms.KeySmsController;
+import no.softwarecontrol.idoc.webservices.restapi.ratelimit.RateLimit;
 
 /**
  *
@@ -21,6 +22,7 @@ import no.softwarecontrol.idoc.keysms.KeySmsController;
 @Stateless
 @Path("no.softwarecontrol.idoc.entityobject.sms")
 @RolesAllowed({"ApplicationRole"})
+@RateLimit(requests = 8, seconds = 600)
 public class SmsFacadeREST {
 
     @POST
