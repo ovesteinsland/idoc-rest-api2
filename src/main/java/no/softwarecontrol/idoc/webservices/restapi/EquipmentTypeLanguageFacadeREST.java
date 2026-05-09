@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -13,6 +14,9 @@ import no.softwarecontrol.idoc.data.entityobject.KeyFaultLanguage;
 @Path("no.softwarecontrol.idoc.entityobject.equipmenttypelanguage")
 @RolesAllowed({"ApplicationRole"})
 public class EquipmentTypeLanguageFacadeREST extends AbstractFacade<EquipmentTypeLanguage> {
+
+
+    //private final EquipmentTypeFacadeREST equipmentTypeFacadeREST = EquipmentTypeFacadeREST.getInstance();
 
     public EquipmentTypeLanguageFacadeREST() {
         super(EquipmentTypeLanguage.class);
@@ -27,8 +31,8 @@ public class EquipmentTypeLanguageFacadeREST extends AbstractFacade<EquipmentTyp
     @Path("create/{equipmentTypeId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("equipmentTypeId") String equipmentTypeId, EquipmentTypeLanguage entity) {
-        EquipmentTypeFacadeREST equipmentTypeFacadeREST = new EquipmentTypeFacadeREST();
-        EquipmentType equipmentType = equipmentTypeFacadeREST.find(equipmentTypeId);
+
+        EquipmentType equipmentType = EquipmentTypeFacadeREST.getInstance().find(equipmentTypeId);
         entity.setEquipmentType(equipmentType);
         super.create(entity);
     }

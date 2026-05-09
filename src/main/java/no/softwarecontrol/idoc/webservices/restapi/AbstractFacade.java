@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityTransaction;
 import jakarta.persistence.Query;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
 
@@ -28,12 +29,20 @@ public abstract class AbstractFacade<T> {
 
     public void create(T entity) {
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        EntityTransaction tx = null;
+
         try {
-            em.getTransaction().begin();
+            tx = em.getTransaction();
+            tx.begin();
             em.persist(entity);
-            em.getTransaction().commit();
+            tx.commit();
         }catch (Exception e){
+            if (tx != null && tx.isActive()) {
+                tx.rollback(); // Rull tilbake endringer ved feil
+            }
             e.printStackTrace(System.out);
+            throw e;
+
         } finally {
             em.close();
         }
@@ -46,20 +55,6 @@ public abstract class AbstractFacade<T> {
             em.merge(entity);
             em.getTransaction().commit();
         }catch (Exception e){
-            // wait and try again...
-            try {
-                System.out.println("===================================================");
-                System.out.println("AbstractFacadeREST.edit(): Prøver igjen på deadlock");
-                System.out.println("===================================================");
-
-                Thread.sleep(5000);
-                em.getTransaction().begin();
-                em.merge(entity);
-                em.getTransaction().commit();
-            } catch (InterruptedException e1) {
-                e1.printStackTrace();
-            }
-
             e.printStackTrace(System.out);
         } finally {
             em.close();
@@ -82,42 +77,37 @@ public abstract class AbstractFacade<T> {
         try {
             return em.find(entityClass, id);
         } finally {
-            em.close();
+            if (em != null) { // Legg til null-sjekk for sikkerhets skyld
+                em.close();
+            }
         }
-
     }
 
     public List<T> findAll() {
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        Query query = em.createNamedQuery(getSelectAllQuery());
-        //query.setParameter("loginName", id);
-        //query.setFirstResult(0);
-        //query.setMaxResults(10);
-        List results = query.getResultList();
-        em.close();
-        return results;
-
-        //javax.persistence.criteria.CriteriaQuery cq = getEntityManager().getCriteriaBuilder().createQuery();
-        //cq.select(cq.from(entityClass));
-        //return getEntityManager().createQuery(cq).getResultList();
+        try {
+            Query query = em.createNamedQuery(getSelectAllQuery());
+            return query.getResultList();
+        } finally {
+            if (em != null) { // Legg til null-sjekk for sikkerhets skyld
+                em.close();
+            }
+        }
     }
 
     public List<T> findRange(int[] range) {
         EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        Query query = em.createNamedQuery(getSelectAllQuery());
-        //query.setParameter("loginName", id);
-        query.setFirstResult(range[0]);
-        query.setMaxResults(range[1] - range[0] + 1);
-        List results = query.getResultList();
-        em.close();
-        return results;
-
-        /*javax.persistence.criteria.CriteriaQuery cq = getEntityManager().getCriteriaBuilder().createQuery();
-        cq.select(cq.from(entityClass));
-        javax.persistence.Query q = getEntityManager().createQuery(cq);
-        q.setMaxResults(range[1] - range[0] + 1);
-        q.setFirstResult(range[0]);
-        return q.getResultList();*/
+        try {
+            Query query = em.createNamedQuery(getSelectAllQuery());
+            //query.setParameter("loginName", id);
+            query.setFirstResult(range[0]);
+            query.setMaxResults(range[1] - range[0] + 1);
+            return query.getResultList();
+        } finally {
+            if (em != null) { // Legg til null-sjekk for sikkerhets skyld
+                em.close();
+            }
+        }
     }
 
     public int count() {

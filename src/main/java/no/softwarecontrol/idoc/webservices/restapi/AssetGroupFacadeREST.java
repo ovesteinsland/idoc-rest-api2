@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
@@ -27,10 +28,18 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class AssetGroupFacadeREST extends AbstractFacade<AssetGroup> {
 
+    private static AssetGroupFacadeREST instance;
+
     public AssetGroupFacadeREST() {
         super(AssetGroup.class);
     }
 
+    public static AssetGroupFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new AssetGroupFacadeREST();
+        }
+        return instance;
+    }
     @Override
     protected String getSelectAllQuery(){
         return "AssetGroup.findAll";
@@ -48,61 +57,38 @@ public class AssetGroupFacadeREST extends AbstractFacade<AssetGroup> {
     @Path("loadByOwner/{ownerId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<AssetGroup> loadByOwner(@PathParam("ownerId") String ownerId) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<AssetGroup> resultList = em.createNativeQuery(
+                            "SELECT ag.* " +
+                                    "FROM asset_group ag " +
+                                    "JOIN company_has_asset_group chag ON chag.asset_group_asset_group_id = ag.asset_group_id " +
+                                    "WHERE chag.company_company_id = ?1",
+                            AssetGroup.class)
+                    .setParameter(1, ownerId)
+                    .getResultList();
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<AssetGroup> resultList = (List<AssetGroup>) em.createNativeQuery("SELECT * \n"
-                                + " FROM asset_group ag\n "
-                                + " join company_has_asset_group chag on chag.asset_group_asset_group_id = ag.asset_group_id\n"
-                                + " WHERE chag.company_company_id = ?1 ",
-                        AssetGroup.class)
-                .setParameter(1, ownerId)
-                .getResultList();
-        em.close();
-        for(AssetGroup assetGroup : resultList) {
-            assetGroup.setAssetList(new ArrayList<>());
-            assetGroup.setCompanyList(new ArrayList<>());
-        }
-        return resultList;
+            // Optimaliser resultatet ved å tømme lister
+            for (AssetGroup assetGroup : resultList) {
+                assetGroup.setAssetList(new ArrayList<>());
+                assetGroup.setCompanyList(new ArrayList<>());
+            }
+
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception in loadByOwner for Owner ID: " + ownerId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        } // EntityManager lukkes automatisk her
     }
-    /*@PUT
-    @Path("linkToCompanyAssetType/{companyId}/{assetTypeId}")
-    @Consumes({MediaType.APPLICATION_JSON})
-    public void linkToCompanyAssetType(
-            @PathParam("companyId") String companyId,
-            @PathParam("assetTypeId") String assetTypeId,
-            AssetGroup entity) {
-
-        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-        AssetTypeFacadeREST assetTypeFacadeREST = new AssetTypeFacadeREST();
-
-        AssetGroup assetGroup = this.find(entity.getAssetGroupId());
-        AssetType assetType = assetTypeFacadeREST.find(assetTypeId);
-        Company company = companyFacadeREST.find(companyId);
-        if (assetGroup != null && company != null && assetType != null) {
-            assetGroup.setAssetType(assetType);
-            this.edit(assetGroup);
-            if (!assetGroup.getCompanyList().contains(company)) {
-                assetGroup.getCompanyList().add(company);
-            }
-            if (!company.getAssetGroupList().contains(assetGroup)) {
-                company.getAssetGroupList().add(assetGroup);
-                companyFacadeREST.edit(company);
-            }
-            if (!assetType.getAssetGroupList().contains(assetGroup)) {
-                assetType.getAssetGroupList().add(assetGroup);
-            }
-        }
-    }*/
 
     @PUT
     @Path("unlinkCompany/{assetId}/{companyId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void unlinkCompany(@PathParam("assetId") String assetId, @PathParam("companyId") String companyId, AssetGroup entity) {
         AssetGroup assetGroup = this.find(entity.getAssetGroupId());
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        Asset asset = assetFacadeREST.find(assetId);
+        Asset asset = AssetFacadeREST.getInstance().find(assetId);
         if (asset != null && assetGroup != null) {
-            assetFacadeREST.unlinkCompany(companyId, asset);
+            AssetFacadeREST.getInstance().unlinkCompany(companyId, asset);
         }
         if (asset != null && assetGroup != null) {
             if (assetGroup.getAssetList().contains(asset)) {
@@ -118,10 +104,9 @@ public class AssetGroupFacadeREST extends AbstractFacade<AssetGroup> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToCompany(@PathParam("companyId") String companyId,
             AssetGroup entity) {
-        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
 
         AssetGroup assetGroup = this.find(entity.getAssetGroupId());
-        Company company = companyFacadeREST.find(companyId);
+        Company company = CompanyFacadeREST.getInstance().find(companyId);
         if (assetGroup != null && company != null) {
             if (!assetGroup.getCompanyList().contains(company)) {
                 assetGroup.getCompanyList().add(company);
@@ -129,7 +114,7 @@ public class AssetGroupFacadeREST extends AbstractFacade<AssetGroup> {
             }
             if (!company.getAssetGroupList().contains(assetGroup)) {
                 company.getAssetGroupList().add(assetGroup);
-                companyFacadeREST.edit(company);
+                CompanyFacadeREST.getInstance().edit(company);
             }
         }
     }
@@ -168,12 +153,12 @@ public class AssetGroupFacadeREST extends AbstractFacade<AssetGroup> {
         return companyIds;
     }
 
-    @GET
-    @Override
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<AssetGroup> findAll() {
-        return super.findAll();
-    }
+//    @GET
+//    @Override
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<AssetGroup> findAll() {
+//        return super.findAll();
+//    }
 
     @GET
     @Path("{from}/{to}")

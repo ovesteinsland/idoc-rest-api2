@@ -7,10 +7,7 @@ import jakarta.persistence.EntityTransaction;
 import jakarta.persistence.Query;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-import no.softwarecontrol.idoc.data.entityobject.Measurement;
-import no.softwarecontrol.idoc.data.entityobject.MeasurementLanguage;
-import no.softwarecontrol.idoc.data.entityobject.Observation;
-import no.softwarecontrol.idoc.data.entityobject.QuickChoiceItem;
+import no.softwarecontrol.idoc.data.entityobject.*;
 import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory;
 
 import java.util.List;
@@ -22,9 +19,18 @@ import java.util.List;
 @Path("no.softwarecontrol.idoc.entityobject.measurement")
 @RolesAllowed({"ApplicationRole"})
 public class MeasurementFacadeREST extends AbstractFacade<Measurement> {
+    public static MeasurementFacadeREST instance;
 
     public MeasurementFacadeREST() {
         super(Measurement.class);
+        instance = this;
+    }
+
+    public static MeasurementFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new MeasurementFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -48,125 +54,155 @@ public class MeasurementFacadeREST extends AbstractFacade<Measurement> {
     @Path("createListWithObservationId/{observationId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createListWithObservationId(@PathParam("observationId") String observationId, List<Measurement> entities) {
-        // Kjør hele batchen i én transaksjon for bedre determinisme/feilsøking
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            tx.begin();
+        if (entities == null || entities.isEmpty()) {
+            return;
+        }
 
-            for (Measurement measurement : entities) {
-                // 1) Sørg for at measurement finnes (samme logikk som før)
-                Number mCount = (Number) em.createNativeQuery(
-                                "SELECT COUNT(*) FROM measurement WHERE measurement_id = ?1")
-                        .setParameter(1, measurement.getMeasurementId())
-                        .getSingleResult();
-                if (mCount.intValue() == 0) {
-                    Query q = em.createNativeQuery(
-                            "INSERT INTO measurement (" +
-                                    "measurement_id," +
-                                    "name, " +
-                                    "unit, " +
-                                    "value, " +
-                                    "deviation_grade, " +
-                                    "sort_index ," +
-                                    "deleted, " +
-                                    "variable_name, " +
-                                    "java_script, " +
-                                    "value_type, " +
-                                    "value_object, " +
-                                    "value_decimal_count, " +
-                                    "value_format, " +
-                                    "deviation_grade_observation, " +
-                                    "trigger_script, " +
-                                    "layout_type, " +
-                                    "value_default, " +
-                                    "display_type, " +
-                                    "text_align, " +
-                                    "description, " +
-                                    "title_group, " +
-                                    "measurement_group, " +
-                                    "thermal_identity, " +
-                                    "hidden, " +
-                                    "fixed) " +
-                                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                    );
-                    q.setParameter(1, measurement.getMeasurementId());
-                    q.setParameter(2, measurement.getName());
-                    q.setParameter(3, measurement.getUnit());
-                    q.setParameter(4, measurement.getNumberValue() != null ? measurement.getNumberValue() : null);
-                    q.setParameter(5, measurement.getDeviationGrade());
-                    q.setParameter(6, measurement.getSortIndex());
-                    q.setParameter(7, measurement.getDeleted());
-                    q.setParameter(8, measurement.getVariableName());
-                    q.setParameter(9, measurement.getJavaScript());
-                    q.setParameter(10, measurement.getValueType());
-                    q.setParameter(11, measurement.getStringValue());
-                    q.setParameter(12, measurement.getValueDecimalCount());
-                    q.setParameter(13, measurement.getValueFormat());
-                    q.setParameter(14, measurement.getDeviationGradeObservation());
-                    q.setParameter(15, measurement.getTriggerScript());
-                    q.setParameter(16, measurement.getLayoutType());
-                    q.setParameter(17, measurement.getValueDefault());
-                    q.setParameter(18, measurement.getDisplayType());
-                    q.setParameter(19, measurement.getTextAlign() != null ? measurement.getTextAlign().getValue() : null);
-                    q.setParameter(20, measurement.getDescription());
-                    q.setParameter(21, measurement.getTitleGroup());
-                    q.setParameter(22, measurement.getMeasurementGroup());
-                    q.setParameter(23, measurement.getThermalIdentity());
-                    q.setParameter(24, measurement.getHidden());
-                    q.setParameter(25, measurement.getFixed());
-                    q.executeUpdate();
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            EntityTransaction tx = em.getTransaction();
+
+            // Definer SQL-spørringer én gang
+            String sqlMeasurement = """
+                INSERT IGNORE INTO measurement (
+                    measurement_id, name, unit, value, deviation_grade, sort_index, deleted, 
+                    variable_name, java_script, value_type, value_object, value_decimal_count, 
+                    value_format, deviation_grade_observation, trigger_script, layout_type, 
+                    value_default, display_type, text_align, description, title_group, 
+                    measurement_group, thermal_identity, hidden, fixed
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+
+            String sqlLink = """
+                INSERT IGNORE INTO observation_has_measurement (observation_observation_id, measurement_measurement_id) 
+                VALUES (?, ?)
+                """;
+
+            String sqlLanguage = """
+                INSERT IGNORE INTO measurement_language (
+                    measurement_language_id, measurement, unit, name, description, 
+                    language_code, title_group, measurement_group, value_default
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+
+            try {
+                tx.begin();
+                // Pakk ut JDBC Connection for batch-ytelse
+                java.sql.Connection connection = em.unwrap(java.sql.Connection.class);
+
+                try (java.sql.PreparedStatement psMeasurement = connection.prepareStatement(sqlMeasurement);
+                     java.sql.PreparedStatement psLink = connection.prepareStatement(sqlLink);
+                     java.sql.PreparedStatement psLanguage = connection.prepareStatement(sqlLanguage)) {
+
+                    int count = 0;
+                    int batchSize = 1000;
+
+                    for (Measurement measurement : entities) {
+                        // 1. Prepare Measurement
+                        psMeasurement.setString(1, measurement.getMeasurementId());
+                        psMeasurement.setString(2, measurement.getName());
+                        psMeasurement.setString(3, measurement.getUnit());
+                        setNullableDouble(psMeasurement, 4, measurement.getNumberValue());
+                        setNullableInt(psMeasurement, 5, measurement.getDeviationGrade());
+                        setNullableInt(psMeasurement, 6, measurement.getSortIndex());
+                        psMeasurement.setBoolean(7, Boolean.TRUE.equals(measurement.getDeleted()));
+                        psMeasurement.setString(8, measurement.getVariableName());
+                        psMeasurement.setString(9, measurement.getJavaScript());
+                        psMeasurement.setString(10, measurement.getValueType());
+                        psMeasurement.setString(11, measurement.getStringValue());
+                        setNullableInt(psMeasurement, 12, measurement.getValueDecimalCount());
+                        psMeasurement.setString(13, measurement.getValueFormat());
+                        setNullableInt(psMeasurement, 14, measurement.getDeviationGradeObservation());
+                        psMeasurement.setString(15, measurement.getTriggerScript());
+                        psMeasurement.setInt(16, measurement.getLayoutType());
+                        psMeasurement.setString(17, measurement.getValueDefault());
+                        psMeasurement.setInt(18, measurement.getDisplayType());
+                        psMeasurement.setString(19, measurement.getTextAlign() != null ? measurement.getTextAlign().getValue() : null);
+                        psMeasurement.setString(20, measurement.getDescription());
+                        psMeasurement.setString(21, measurement.getTitleGroup());
+                        psMeasurement.setString(22, measurement.getMeasurementGroup());
+                        psMeasurement.setString(23, measurement.getThermalIdentity());
+                        setNullableBoolean(psMeasurement, 24, measurement.getHidden());
+                        setNullableBoolean(psMeasurement, 25, measurement.getFixed());
+                        psMeasurement.addBatch();
+
+                        // 2. Prepare Link
+                        psLink.setString(1, observationId);
+                        psLink.setString(2, measurement.getMeasurementId());
+                        psLink.addBatch();
+
+                        // 3. Prepare Languages
+                        if (measurement.getMeasurementLanguageList() != null) {
+                            for (MeasurementLanguage ml : measurement.getMeasurementLanguageList()) {
+                                if (ml.getMeasurementLanguageId() != null) {
+                                    psLanguage.setString(1, ml.getMeasurementLanguageId());
+                                    psLanguage.setString(2, measurement.getMeasurementId());
+                                    psLanguage.setString(3, ml.getUnit());
+                                    psLanguage.setString(4, ml.getName());
+                                    psLanguage.setString(5, ml.getDescription());
+                                    psLanguage.setString(6, ml.getLanguageCode());
+                                    psLanguage.setString(7, ml.getTitleGroup());
+                                    psLanguage.setString(8, ml.getMeasurementGroup());
+                                    psLanguage.setString(9, ml.getValueDefault());
+                                    psLanguage.addBatch();
+                                }
+                            }
+                        }
+
+                        // Execute batch periodically
+                        if (++count % batchSize == 0) {
+                            psMeasurement.executeBatch();
+                            psLink.executeBatch();
+                            psLanguage.executeBatch();
+                        }
+                    }
+
+                    // Execute remaining items
+                    psMeasurement.executeBatch();
+                    psLink.executeBatch();
+                    psLanguage.executeBatch();
                 }
 
-                // 2) Link idempotent: sjekk om finnes først, med en liten delay
-                try {
-                    Thread.sleep(50); // vent 50 ms
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt(); // gjenopprett interrupt-flagget
+                tx.commit();
+            } catch (Exception e) {
+                if (tx.isActive()) {
+                    tx.rollback();
                 }
-                Number linkCount = (Number) em.createNativeQuery(
-                                "SELECT COUNT(*) FROM observation_has_measurement WHERE observation_observation_id = ?1 AND measurement_measurement_id = ?2")
-                        .setParameter(1, observationId)
-                        .setParameter(2, measurement.getMeasurementId())
-                        .getSingleResult();
-                if (linkCount.intValue() == 0) {
-                    em.createNativeQuery(
-                            "INSERT INTO observation_has_measurement (observation_observation_id, measurement_measurement_id) " +
-                                    "VALUES (?1, ?2) " +
-                                    "ON DUPLICATE KEY UPDATE measurement_measurement_id = measurement_measurement_id")
-                            .setParameter(1, observationId)
-                            .setParameter(2, measurement.getMeasurementId())
-                            .executeUpdate();
-                } else {
-                    System.out.println("Link finnes allerede for observation=" + observationId + " og measurement=" + measurement.getMeasurementId());
-                }
-
-                // 3) Verifiser umiddelbart (diagnostikk)
-                Number verify = (Number) em.createNativeQuery(
-                                "SELECT COUNT(*) FROM observation_has_measurement WHERE observation_observation_id = ?1 AND measurement_measurement_id = ?2")
-                        .setParameter(1, observationId)
-                        .setParameter(2, measurement.getMeasurementId())
-                        .getSingleResult();
-                if (verify.intValue() == 0) {
-                    System.out.println("ADVARSEL: Link mangler ETTER insert for observation=" + observationId + ", measurement=" + measurement.getMeasurementId());
-                } else {
-                    System.out.println("Link opprettet for observation=" + observationId + ", measurement=" + measurement.getMeasurementId());
-                }
-
-                // 4) Insert all measurement_language
-                insertMeasurementLanguages(em,measurement);
+                System.out.println("Feil i batch createListWithObservationId for observationId: " + observationId + " - " + e.getMessage());
+                e.printStackTrace(System.err);
+                throw new RuntimeException("Failed to create measurement list with observation", e);
             }
-
-            tx.commit();
         } catch (Exception e) {
-            if (tx.isActive()) {
-                tx.rollback();
-            }
-            System.out.println("Feil i batch createListWithObservationId: " + e.getMessage());
-        } finally {
-            em.close();
+            System.out.println("Exception while creating EntityManager for createListWithObservationId: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to initialize EntityManager", e);
         }
     }
+
+    // Helper methods for null-safe JDBC parameters
+    private void setNullableInt(java.sql.PreparedStatement ps, int index, Integer value) throws java.sql.SQLException {
+        if (value != null) {
+            ps.setInt(index, value);
+        } else {
+            ps.setNull(index, java.sql.Types.INTEGER);
+        }
+    }
+
+    private void setNullableDouble(java.sql.PreparedStatement ps, int index, Double value) throws java.sql.SQLException {
+        if (value != null) {
+            ps.setDouble(index, value);
+        } else {
+            ps.setNull(index, java.sql.Types.DOUBLE);
+        }
+    }
+
+    private void setNullableBoolean(java.sql.PreparedStatement ps, int index, Boolean value) throws java.sql.SQLException {
+        if (value != null) {
+            ps.setBoolean(index, value);
+        } else {
+            ps.setNull(index, java.sql.Types.BOOLEAN);
+        }
+    }
+
 
     private void insertMeasurementLanguages(EntityManager em, Measurement measurement) {
         if (measurement == null || measurement.getMeasurementId() == null) {
@@ -215,283 +251,134 @@ public class MeasurementFacadeREST extends AbstractFacade<Measurement> {
     }
 
 
-
-//    @POST
-//    @Path("createListWithObservationId/{observationId}")
-//    @Consumes({MediaType.APPLICATION_JSON})
-//    public void createListWithObservationId(@PathParam("observationId") String observationId, List<Measurement> entities) {
-//        // Check if the measurement exists
-//        //ObservationFacadeREST observationFacadeREST = new ObservationFacadeREST();
-//        //Observation observation = observationFacadeREST.findNative(observationId);
-//
-//        StringBuilder measurementIds = new StringBuilder("(");
-//        for (Measurement measurement : entities) {
-//            createWithObservation(observationId, measurement);
-//            measurementIds.append("'");
-//            measurementIds.append(measurement.getMeasurementId()).append("',");
-//            try {
-//                Thread.sleep(200); // vent 50 ms
-//            } catch (InterruptedException ie) {
-//                Thread.currentThread().interrupt(); // gjenopprett interrupt-flagget
-//            }
-//
-//        }
-//        measurementIds.append(")");
-//        System.out.println("measurementIds = " + measurementIds);
-//
-//        System.out.println("createListWithObservationId for observationId = " + observationId);
-//
-//    }
-
     @POST
     @Path("createWithObservation/{observationId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithObservation(@PathParam("observationId") String observationId, Measurement entity) {
-        //super.create(entity);
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            tx.begin();
-            Query query = em.createNativeQuery(
-                    "INSERT INTO measurement (" +
-                            "measurement_id," +
-                            "name, " +
-                            "unit, " +
-                            "value, " +
-                            "deviation_grade, " +
-                            "sort_index ," +
-                            "deleted, " +
-                            "variable_name, " +
-                            "java_script, " +
-                            "value_type, " +
-                            "value_object, " +
-                            "value_decimal_count, " +
-                            "value_format, " +
-                            "deviation_grade_observation, " +
-                            "trigger_script, " +
-                            "layout_type, " +
-                            "value_default, " +
-                            "display_type, " +
-                            "text_align, " +
-                            "description, " +
-                            "title_group, " +
-                            "measurement_group, " +
-                            "thermal_identity, " +
-                            "hidden, " +
-                            "fixed) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
-            );
 
-            query.setParameter(1, entity.getMeasurementId());
-            query.setParameter(2, entity.getName());
-            query.setParameter(3, entity.getUnit());
-            if (entity.getNumberValue() != null) {
-                query.setParameter(4, entity.getNumberValue());
-            } else {
-                query.setParameter(4, null);
-            }
-            query.setParameter(5, entity.getDeviationGrade());
-            query.setParameter(6, entity.getSortIndex());
-            query.setParameter(7, entity.getDeleted());
-            query.setParameter(8, entity.getVariableName());
-            query.setParameter(9, entity.getJavaScript());
-            query.setParameter(10, entity.getValueType());
-            query.setParameter(11, entity.getStringValue());
-            query.setParameter(12, entity.getValueDecimalCount());
-            query.setParameter(13, entity.getValueFormat());
-            query.setParameter(14, entity.getDeviationGradeObservation());
-            query.setParameter(15, entity.getTriggerScript());
-            query.setParameter(16, entity.getLayoutType());
-            query.setParameter(17, entity.getValueDefault());
-            query.setParameter(18, entity.getDisplayType());
-            if (entity.getTextAlign() != null) {
-                query.setParameter(19, entity.getTextAlign().getValue());
-            } else {
-                query.setParameter(19, null);
-            }
-            query.setParameter(20, entity.getDescription());
-            query.setParameter(21, entity.getTitleGroup());
-            query.setParameter(22, entity.getMeasurementGroup());
-            query.setParameter(23, entity.getThermalIdentity());
-            if (entity.getHidden() != null) {
-                query.setParameter(24, entity.getHidden());
-            } else {
-                query.setParameter(24, null);
-            }
-            if (entity.getFixed() != null) {
-                query.setParameter(25, entity.getFixed());
-            } else {
-                query.setParameter(25, null);
-            }
-            final int i = query.executeUpdate();
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            Measurement existingMeasurement = find(entity.getMeasurementId());
+            if (existingMeasurement == null) {
+                EntityTransaction tx = em.getTransaction();
+                try {
+                    tx.begin();
+                    Query query = em.createNativeQuery("""
+                            INSERT INTO measurement (
+                                measurement_id,
+                                name, 
+                                unit, 
+                                value, 
+                                deviation_grade, 
+                                sort_index,
+                                deleted, 
+                                variable_name, 
+                                java_script, 
+                                value_type, 
+                                value_object, 
+                                value_decimal_count, 
+                                value_format, 
+                                deviation_grade_observation, 
+                                trigger_script, 
+                                layout_type, 
+                                value_default, 
+                                display_type, 
+                                text_align, 
+                                description, 
+                                title_group, 
+                                measurement_group, 
+                                thermal_identity, 
+                                hidden, 
+                                fixed
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                            """
+                    );
 
-            //tx.begin();
-            final int linkInsertCount = em.createNativeQuery(
-                            "INSERT INTO observation_has_measurement (observation_observation_id, measurement_measurement_id)\n" +
-                                    "VALUES (?, ?);"
-                    ).setParameter(1, observationId)
-                    .setParameter(2, entity.getMeasurementId())
-                    .executeUpdate();
-            if (linkInsertCount > 0) {
-                System.out.println("Insert LINK with observation SUCCEEDED:" + linkInsertCount + " rows inserted");
-            } else {
-                System.out.println("Insert measurement: " + entity.getMeasurementId() + "LINK with observation FAILED:" + linkInsertCount + " rows inserted");
-            }
+                    query.setParameter(1, entity.getMeasurementId());
+                    query.setParameter(2, entity.getName());
+                    query.setParameter(3, entity.getUnit());
+                    query.setParameter(4, entity.getNumberValue() != null ? entity.getNumberValue() : null);
+                    query.setParameter(5, entity.getDeviationGrade());
+                    query.setParameter(6, entity.getSortIndex());
+                    query.setParameter(7, entity.getDeleted());
+                    query.setParameter(8, entity.getVariableName());
+                    query.setParameter(9, entity.getJavaScript());
+                    query.setParameter(10, entity.getValueType());
+                    query.setParameter(11, entity.getStringValue());
+                    query.setParameter(12, entity.getValueDecimalCount());
+                    query.setParameter(13, entity.getValueFormat());
+                    query.setParameter(14, entity.getDeviationGradeObservation());
+                    query.setParameter(15, entity.getTriggerScript());
+                    query.setParameter(16, entity.getLayoutType());
+                    query.setParameter(17, entity.getValueDefault());
+                    query.setParameter(18, entity.getDisplayType());
+                    query.setParameter(19, entity.getTextAlign() != null ? entity.getTextAlign().getValue() : null);
+                    query.setParameter(20, entity.getDescription());
+                    query.setParameter(21, entity.getTitleGroup());
+                    query.setParameter(22, entity.getMeasurementGroup());
+                    query.setParameter(23, entity.getThermalIdentity());
+                    query.setParameter(24, entity.getHidden() != null ? entity.getHidden() : null);
+                    query.setParameter(25, entity.getFixed() != null ? entity.getFixed() : null);
+                    final int i = query.executeUpdate();
 
-            // 3) Verifiser umiddelbart (diagnostikk)
-            Number verify = (Number) em.createNativeQuery(
-                            "SELECT COUNT(*) FROM observation_has_measurement WHERE observation_observation_id = ?1 AND measurement_measurement_id = ?2")
-                    .setParameter(1, observationId)
-                    .setParameter(2, entity.getMeasurementId())
-                    .getSingleResult();
-            if (verify.intValue() == 0) {
-                System.out.println("ADVARSEL: Link mangler ETTER insert for observation=" + observationId + ", measurement=" + entity.getMeasurementId());
-            }
-            tx.commit();
+                    final int linkInsertCount = em.createNativeQuery("""
+                                    INSERT INTO observation_has_measurement (observation_observation_id, measurement_measurement_id)
+                                    VALUES (?, ?);
+                                    """)
+                            .setParameter(1, observationId)
+                            .setParameter(2, entity.getMeasurementId())
+                            .executeUpdate();
+                    if (linkInsertCount > 0) {
+                        System.out.println("Insert LINK with observation SUCCEEDED:" + linkInsertCount + " rows inserted");
+                    } else {
+                        System.out.println("Insert measurement: " + entity.getMeasurementId() + " LINK with observation FAILED:" + linkInsertCount + " rows inserted");
+                    }
 
-            // Now we need to create the measurement_languages
-            for (MeasurementLanguage measurementLanguage : entity.getMeasurementLanguageList()) {
-                measurementLanguage.setMeasurement(entity);
-                MeasurementLanguageFacadeREST measurementLanguageFacadeREST = new MeasurementLanguageFacadeREST();
-                measurementLanguageFacadeREST.create(measurementLanguage);
-            }
-            //System.out.println(entity.getSortIndex() + ": Successfully created measurement: " + entity.getName() + " (" + entity.getUnit() + ")");
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("Exception while inserting into measurement: " + exp.getMessage());
-        } finally {
+                    // 3) Verifiser umiddelbart (diagnostikk)
+                    Number verify = (Number) em.createNativeQuery("""
+                                    SELECT COUNT(*) FROM observation_has_measurement 
+                                    WHERE observation_observation_id = ?1 AND measurement_measurement_id = ?2
+                                    """)
+                            .setParameter(1, observationId)
+                            .setParameter(2, entity.getMeasurementId())
+                            .getSingleResult();
+                    if (verify.intValue() == 0) {
+                        System.out.println("ADVARSEL: Link mangler ETTER insert for observation=" + observationId + ", measurement=" + entity.getMeasurementId());
+                    }
+                    tx.commit();
 
-            em.close();
+                    // Now we need to create the measurement_languages
+                    for (MeasurementLanguage measurementLanguage : entity.getMeasurementLanguageList()) {
+                        measurementLanguage.setMeasurement(entity);
+                        MeasurementLanguageFacadeREST.getInstance().create(measurementLanguage);
+                    }
+                } catch (Exception exp) {
+                    if (tx.isActive()) {
+                        tx.rollback();
+                    }
+                    System.out.println("Exception while inserting measurement with observationId: " + observationId + " - " + exp.getMessage());
+                    exp.printStackTrace(System.err);
+                    throw new RuntimeException("Failed to create measurement with observation", exp);
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Exception while creating EntityManager for createWithObservation: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to initialize EntityManager", e);
         }
     }
-
-//    @POST
-//    @Path("createWithObservation/{observationId}")
-//    @Consumes({MediaType.APPLICATION_JSON})
-//    public void createWithObservation(@PathParam("observationId") String observationId, Measurement entity) {
-//        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-//        EntityTransaction tx = em.getTransaction();
-//        try {
-//            tx.begin();
-//
-//            // 1) Valider/trim verdier som kan være for lange (unngå constraint-feil som ruller alt tilbake)
-//            if (entity.getStringValue() != null && entity.getStringValue().length() > 250) {
-//                entity.setStringValue(entity.getStringValue().substring(0, 250));
-//            }
-//
-//            // 2) Sjekk om measurement allerede finnes (idempotent)
-//            Number mCount = (Number) em.createNativeQuery(
-//                            "SELECT COUNT(*) FROM measurement WHERE measurement_id = ?1")
-//                    .setParameter(1, entity.getMeasurementId())
-//                    .getSingleResult();
-//
-//            if (mCount.intValue() == 0) {
-//                Query insertMeasurement = em.createNativeQuery(
-//                        "INSERT INTO measurement (" +
-//                                "measurement_id," +
-//                                "name, " +
-//                                "unit, " +
-//                                "value, " +
-//                                "deviation_grade, " +
-//                                "sort_index ," +
-//                                "deleted, " +
-//                                "variable_name, " +
-//                                "java_script, " +
-//                                "value_type, " +
-//                                "value_object, " +
-//                                "value_decimal_count, " +
-//                                "value_format, " +
-//                                "deviation_grade_observation, " +
-//                                "trigger_script, " +
-//                                "layout_type, " +
-//                                "value_default, " +
-//                                "display_type, " +
-//                                "text_align, " +
-//                                "description, " +
-//                                "title_group, " +
-//                                "measurement_group, " +
-//                                "thermal_identity, " +
-//                                "hidden, " +
-//                                "fixed) " +
-//                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-//                );
-//
-//                insertMeasurement.setParameter(1, entity.getMeasurementId());
-//                insertMeasurement.setParameter(2, entity.getName());
-//                insertMeasurement.setParameter(3, entity.getUnit());
-//                insertMeasurement.setParameter(4, entity.getNumberValue() != null ? entity.getNumberValue() : null);
-//                insertMeasurement.setParameter(5, entity.getDeviationGrade());
-//                insertMeasurement.setParameter(6, entity.getSortIndex());
-//                insertMeasurement.setParameter(7, entity.getDeleted());
-//                insertMeasurement.setParameter(8, entity.getVariableName());
-//                insertMeasurement.setParameter(9, entity.getJavaScript());
-//                insertMeasurement.setParameter(10, entity.getValueType());
-//                insertMeasurement.setParameter(11, entity.getStringValue());
-//                insertMeasurement.setParameter(12, entity.getValueDecimalCount());
-//                insertMeasurement.setParameter(13, entity.getValueFormat());
-//                insertMeasurement.setParameter(14, entity.getDeviationGradeObservation());
-//                insertMeasurement.setParameter(15, entity.getTriggerScript());
-//                insertMeasurement.setParameter(16, entity.getLayoutType());
-//                insertMeasurement.setParameter(17, entity.getValueDefault());
-//                insertMeasurement.setParameter(18, entity.getDisplayType());
-//                insertMeasurement.setParameter(19, entity.getTextAlign() != null ? entity.getTextAlign().getValue() : null);
-//                insertMeasurement.setParameter(20, entity.getDescription());
-//                insertMeasurement.setParameter(21, entity.getTitleGroup());
-//                insertMeasurement.setParameter(22, entity.getMeasurementGroup());
-//                insertMeasurement.setParameter(23, entity.getThermalIdentity());
-//                insertMeasurement.setParameter(24, entity.getHidden() != null ? entity.getHidden() : null);
-//                insertMeasurement.setParameter(25, entity.getFixed() != null ? entity.getFixed() : null);
-//
-//                insertMeasurement.executeUpdate();
-//            } // else: finnes allerede, gå videre til linking
-//
-//            // 3) Link – idempotent: sjekk først om link finnes
-//            Number linkCount = (Number) em.createNativeQuery(
-//                            "SELECT COUNT(*) FROM observation_has_measurement " +
-//                                    "WHERE observation_observation_id = ?1 AND measurement_measurement_id = ?2")
-//                    .setParameter(1, observationId)
-//                    .setParameter(2, entity.getMeasurementId())
-//                    .getSingleResult();
-//
-//            if (linkCount.intValue() == 0) {
-//                em.createNativeQuery(
-//                                "INSERT INTO observation_has_measurement (observation_observation_id, measurement_measurement_id) " +
-//                                        "VALUES (?1, ?2)")
-//                        .setParameter(1, observationId)
-//                        .setParameter(2, entity.getMeasurementId())
-//                        .executeUpdate();
-//            } // else: link finnes allerede – det er OK/idempotent
-//
-//            tx.commit();
-//
-//            // 4) Lagre språk etterpå (egen transaksjon i facade-kallene)
-//            for (MeasurementLanguage measurementLanguage : entity.getMeasurementLanguageList()) {
-//                measurementLanguage.setMeasurement(entity);
-//                MeasurementLanguageFacadeREST measurementLanguageFacadeREST = new MeasurementLanguageFacadeREST();
-//                measurementLanguageFacadeREST.create(measurementLanguage);
-//            }
-//        } catch (Exception exp) {
-//            try {
-//                if (tx.isActive()) {
-//                    tx.rollback();
-//                }
-//            } catch (Exception ignore) {}
-//            // For bedre feilsøk: logg mer informasjon (SQLState hvis tilgjengelig)
-//            System.out.println("Exception while inserting measurement/link: " + exp.getMessage());
-//        } finally {
-//            em.close();
-//        }
-//    }
 
 
     @POST
     @Path("createWithEquipment/{equipmentId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithEquipment(@PathParam("equipmentId") String equipmentId, Measurement entity) {
-        super.create(entity);
-        EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
+        // Check if measurement exits
+        Measurement measurement = MeasurementFacadeREST.getInstance().find(entity.getMeasurementId());
+        if (measurement == null) {
+            super.create(entity);
+        }
         //String measurementId, String equipmentId
-        equipmentFacadeREST.linkMeasurement(entity.getMeasurementId(), equipmentId);
+        EquipmentFacadeREST.getInstance().linkMeasurement(entity.getMeasurementId(), equipmentId);
     }
 
     @POST
@@ -500,15 +387,14 @@ public class MeasurementFacadeREST extends AbstractFacade<Measurement> {
     public void createWithQuickChoiceItem(@PathParam("quickChoiceItemId") String quickChoiceItemId, Measurement entity) {
         super.create(entity);
 
-        QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
-        QuickChoiceItem quickChoiceItem = quickChoiceItemFacadeREST.find(quickChoiceItemId);
+        QuickChoiceItem quickChoiceItem = QuickChoiceItemFacadeREST.getInstance().find(quickChoiceItemId);
         if (!quickChoiceItem.getMeasurementList().contains(entity)) {
             quickChoiceItem.getMeasurementList().add(entity);
         }
         if (!entity.getQuickChoiceItemList().contains(quickChoiceItem)) {
             entity.getQuickChoiceItemList().add(quickChoiceItem);
         }
-        quickChoiceItemFacadeREST.edit(quickChoiceItem);
+        QuickChoiceItemFacadeREST.getInstance().edit(quickChoiceItem);
         edit(entity);
     }
 
@@ -571,81 +457,79 @@ public class MeasurementFacadeREST extends AbstractFacade<Measurement> {
         }
     }
 
-
     @GET
     @Path("loadByEquipment/{equipmentId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Measurement> loadMeasurements(@PathParam("equipmentId") String equipmentId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Measurement> resultList = (List<Measurement>) em.createNativeQuery("SELECT " +
-                                "m.* FROM measurement m " +
-                                "JOIN equipment_has_measurement ehm ON ehm.measurement_measurement_id = m.measurement_id " +
-                                "WHERE ehm.equipment_equipment_id = ?1",
-                        Measurement.class)
-                .setParameter(1, equipmentId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Measurement> resultList = (List<Measurement>) em.createNativeQuery("""
+                                    SELECT m.* FROM measurement m 
+                                    JOIN equipment_has_measurement ehm ON ehm.measurement_measurement_id = m.measurement_id 
+                                    WHERE ehm.equipment_equipment_id = ?1
+                                    """,
+                            Measurement.class)
+                    .setParameter(1, equipmentId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while loading measurements for equipmentId: " + equipmentId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load measurements for equipment", e);
+        }
     }
 
     @GET
     @Path("loadByQuickChoiceItem/{quickChoiceItemId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Measurement> loadByQuickChoiceItem(@PathParam("quickChoiceItemId") String quickChoiceItemId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Measurement> measurements = em.createNativeQuery("SELECT * FROM measurement m\n" +
-                                "JOIN quick_choice_item_has_measurement qcihm\n" +
-                                "   ON qcihm.measurement_measurement_id = m.measurement_id\n" +
-                                "WHERE qcihm.quick_choice_item_quick_choice_item_id = ?1",
-                        Measurement.class)
-                .setParameter(1, quickChoiceItemId)
-                .getResultList();
-        em.close();
-        return measurements;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Measurement> measurements = em.createNativeQuery("""
+                                    SELECT * FROM measurement m
+                                    JOIN quick_choice_item_has_measurement qcihm
+                                       ON qcihm.measurement_measurement_id = m.measurement_id
+                                    WHERE qcihm.quick_choice_item_quick_choice_item_id = ?1
+                                    """,
+                            Measurement.class)
+                    .setParameter(1, quickChoiceItemId)
+                    .getResultList();
+            return measurements;
+        } catch (Exception e) {
+            System.out.println("Exception while loading measurements for quickChoiceItemId: " + quickChoiceItemId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load measurements by quick choice item", e);
+        }
     }
 
     @GET
     @Path("loadMaster")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Measurement> loadMaster() {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        String sqlScript = """
-                select distinct m.* from measurement m
-                join disipline_has_measurement dhm on m.measurement_id = dhm.measurement_measurement_id
-                where m.deleted = 0
-                
-                union
-                select distinct m.* from measurement m
-                join equipment_type_has_measurement ethm on m.measurement_id = ethm.measurement_measurement_id
-                where m.deleted = 0
-                
-                union
-                select distinct m.* from measurement m
-                join quick_choice_item_has_measurement qcihm on m.measurement_id = qcihm.measurement_measurement_id
-                where m.deleted = 0
-                """;
-        List<Measurement> measurements = em.createNativeQuery(sqlScript,
-                        Measurement.class)
-                .getResultList();
-        em.close();
-        return measurements;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            String sqlScript = """
+                    SELECT DISTINCT m.* FROM measurement m
+                    JOIN disipline_has_measurement dhm ON m.measurement_id = dhm.measurement_measurement_id
+                    WHERE m.deleted = 0
+                    
+                    UNION
+                    SELECT DISTINCT m.* FROM measurement m
+                    JOIN equipment_type_has_measurement ethm ON m.measurement_id = ethm.measurement_measurement_id
+                    WHERE m.deleted = 0
+                    
+                    UNION
+                    SELECT DISTINCT m.* FROM measurement m
+                    JOIN quick_choice_item_has_measurement qcihm ON m.measurement_id = qcihm.measurement_measurement_id
+                    WHERE m.deleted = 0
+                    """;
+            List<Measurement> measurements = em.createNativeQuery(sqlScript, Measurement.class)
+                    .getResultList();
+            return measurements;
+        } catch (Exception e) {
+            System.out.println("Exception while loading master measurements: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load master measurements", e);
+        }
     }
 
-//    @GET
-//    @Path("loadByEquipment/{equipmentId}")
-//    @Produces({MediaType.APPLICATION_JSON})
-//    public List<Measurement> loadByEquipment(@PathParam("equipmentId") String equipmentId) {
-//        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-//        List<Measurement> measurements = em.createNativeQuery("SELECT * FROM measurement m\n" +
-//                                "JOIN equipment_has_measurement ehm\n" +
-//                                "   ON ehm.measurement_measurement_id = m.measurement_id\n" +
-//                                "WHERE ehm.equipment_equipment_id = ?1",
-//                        Measurement.class)
-//                .setParameter(1, equipmentId)
-//                .getResultList();
-//        em.close();
-//        return measurements;
-//    }
 
     @GET
     @Path("{id}")
@@ -654,11 +538,11 @@ public class MeasurementFacadeREST extends AbstractFacade<Measurement> {
         return super.find(id);
     }
 
-    @GET
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<Measurement> findAll() {
-        return super.findAll();
-    }
+//    @GET
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<Measurement> findAll() {
+//        return super.findAll();
+//    }
 
     @GET
     @Path("count")

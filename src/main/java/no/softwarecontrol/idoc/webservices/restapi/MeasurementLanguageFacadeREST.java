@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -11,8 +12,20 @@ import no.softwarecontrol.idoc.data.entityobject.*;
 @RolesAllowed({"ApplicationRole"})
 public class MeasurementLanguageFacadeREST extends AbstractFacade<MeasurementLanguage> {
 
+    private static MeasurementLanguageFacadeREST instance;
+
+    //private final MeasurementFacadeREST measurementFacadeREST = MeasurementFacadeREST.getInstance();
+
     public MeasurementLanguageFacadeREST() {
         super(MeasurementLanguage.class);
+        instance = this;
+    }
+
+    public static MeasurementLanguageFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new MeasurementLanguageFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -24,8 +37,7 @@ public class MeasurementLanguageFacadeREST extends AbstractFacade<MeasurementLan
     @Path("create/{measurementId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("measurementId") String measurementId, MeasurementLanguage entity) {
-        MeasurementFacadeREST measurementFacadeREST = new MeasurementFacadeREST();
-        Measurement measurement = measurementFacadeREST.find(measurementId);
+        Measurement measurement = MeasurementFacadeREST.getInstance().find(measurementId);
         entity.setMeasurement(measurement);
         super.create(entity);
     }

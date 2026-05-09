@@ -34,33 +34,42 @@ public class IntegrationFacadeRest extends AbstractFacade<Integration> {
         linkCompany(entity.getIntegrationId(),customerId);
     }
 
+
     public void linkCompany(String integrationId, String companyId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_integration \n " +
-                            " WHERE integration_integration_id = ?1 AND company_company_id = ?2")
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            Query query = em.createNativeQuery("""
+                            SELECT COUNT(*) FROM company_has_integration
+                            WHERE integration_integration_id = ?1 AND company_company_id = ?2
+                            """)
                     .setParameter(1, integrationId)
                     .setParameter(2, companyId);
 
             Number counter = (Number) query.getSingleResult();
             if (counter.intValue() == 0) {
-                tx.begin();
-                final int i = em.createNativeQuery(
-                                "INSERT INTO company_has_integration (integration_integration_id, company_company_id)\n" +
-                                        "VALUES (?, ?);"
-                        ).setParameter(1, integrationId)
-                        .setParameter(2, companyId)
-                        .executeUpdate();
-                tx.commit();
-            } else {
-                //System.out.println("No problem: equipment_has_measurement already exists");
+                EntityTransaction tx = em.getTransaction();
+                try {
+                    tx.begin();
+                    final int i = em.createNativeQuery("""
+                                    INSERT INTO company_has_integration (integration_integration_id, company_company_id)
+                                    VALUES (?, ?);
+                                    """)
+                            .setParameter(1, integrationId)
+                            .setParameter(2, companyId)
+                            .executeUpdate();
+                    tx.commit();
+                } catch (Exception exp) {
+                    if (tx.isActive()) {
+                        tx.rollback();
+                    }
+                    System.out.println("Exception while inserting into company_has_integration: " + exp.getMessage());
+                    exp.printStackTrace(System.err);
+                    throw new RuntimeException("Failed to link company with integration", exp);
+                }
             }
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("Exception while inserting into equipment_has_measurement: " + exp.getMessage());
-        } finally {
-            em.close();
+        } catch (Exception e) {
+            System.out.println("Exception while checking/linking company: " + e.getMessage());
+            e.printStackTrace(System.err);
+            //throw new RuntimeException("Failed to link company", e);
         }
     }
 

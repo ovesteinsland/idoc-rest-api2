@@ -1,0 +1,112 @@
+### Variables
+###@baseUrl = http://localhost:8080/idoc_rest_api2_war/iDocWebServices/webresources
+@baseUrl = https://api.thermidoc.com/iDocWebServices/webresources
+@username = andy@thermidoc.com
+@password = under89no
+
+###
+
+### 1. Login
+POST {{baseUrl}}/cognito/login
+Content-Type: application/json
+
+{
+  "username": "{{username}}",
+  "password": "{{password}}"
+}
+
+> {%
+    client.global.set("accessToken", response.body.tokens.accessToken);
+    client.global.set("refreshToken", response.body.tokens.refreshToken);
+    client.log("✓ Login successful");
+%}
+
+###
+
+### 2. Refresh Token (nytt endpoint)
+POST {{baseUrl}}/cognito/refresh-token
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+> {%
+    client.test("Token refresh successful", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.assert(response.body.success === true, "Success is not true");
+        client.assert(response.body.tokens.accessToken !== null, "No accessToken");
+        client.assert(response.body.tokens.refreshToken === null, "RefreshToken should be null");
+    });
+
+    // Oppdater accessToken med ny
+    client.global.set("accessToken", response.body.tokens.accessToken);
+    client.log("✓ Token refreshed");
+    client.log("New access token: " + response.body.tokens.accessToken);
+%}
+
+###
+
+### 3. Test ny access token
+GET {{baseUrl}}/cognito/user-info
+Authorization: Bearer {{accessToken}}
+
+> {%
+    client.log("✓ User info with new token: " + response.body.data.email);
+%}
+
+###
+
+### 3. Change Password
+POST {{baseUrl}}/cognito/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "previousPassword": "{{oldPassword}}",
+  "proposedPassword": "{{newPassword}}"
+}
+
+> {%
+    client.test("Password changed", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
+    client.log("✓ Password changed successfully");
+%}
+
+###
+
+### 4. Login med NYTT passord (verifiser at passordendring fungerte)
+POST {{baseUrl}}/cognito/login
+Content-Type: application/json
+
+{
+  "username": "{{username}}",
+  "password": "{{newPassword}}"
+}
+
+> {%
+    client.test("Login with new password successful", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
+    client.global.set("accessToken", response.body.accessToken);
+    client.log("✓ Login with NEW password successful");
+%}
+
+###
+
+### 5. Change Password TILBAKE (for å ikke låse deg ute)
+POST {{baseUrl}}/cognito/change-password
+Content-Type: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "previousPassword": "{{newPassword}}",
+  "proposedPassword": "{{oldPassword}}"
+}
+
+> {%
+    client.log("✓ Password changed back to original");
+%}
+
+###

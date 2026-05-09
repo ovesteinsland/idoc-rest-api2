@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -13,8 +14,19 @@ import no.softwarecontrol.idoc.data.entityobject.CheckListSectionLanguage;
 @Path("no.softwarecontrol.idoc.entityobject.checklistsectionlanguage")
 @RolesAllowed({"ApplicationRole"})
 public class CheckListSectionLanguageFacadeREST extends AbstractFacade<CheckListSectionLanguage>{
+
+    private static CheckListSectionLanguageFacadeREST instance;
+
     public CheckListSectionLanguageFacadeREST() {
         super(CheckListSectionLanguage.class);
+        instance = this;
+    }
+
+    public static CheckListSectionLanguageFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new CheckListSectionLanguageFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -26,8 +38,7 @@ public class CheckListSectionLanguageFacadeREST extends AbstractFacade<CheckList
     @Path("create/{checkListSectionId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("checkListSectionId") String checkListSectionId, CheckListSectionLanguage entity) {
-        CheckListSectionFacadeREST checkListSectionFacadeREST = new CheckListSectionFacadeREST();
-        CheckListSection checkListSection = checkListSectionFacadeREST.find(checkListSectionId);
+        CheckListSection checkListSection = CheckListSectionFacadeREST.getInstance().find(checkListSectionId);
         entity.setCheckListSection(checkListSection);
         super.create(entity);
     }

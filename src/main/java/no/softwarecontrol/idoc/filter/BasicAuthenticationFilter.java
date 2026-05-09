@@ -28,7 +28,18 @@ public class BasicAuthenticationFilter implements Filter {
             "/no.softwarecontrol.idoc.entityobject.user/countByLoginName",
             "/no.softwarecontrol.idoc.entityobject.user/signupUser",
             //"/google.cloud.storage/signed-url",
-            "no.softwarecontrol.idoc.entityobject.language"
+            "no.softwarecontrol.idoc.entityobject.language",
+            "wheeloffortune",
+            // Public paths som ikke krever Basic Auth
+// OBS: Cognito-endepunkter håndteres av CognitoJwtAuthFilter,
+//      men må være her for å ikke bli blokkert av Basic Auth
+
+            "cognito/login",
+            "cognito/register",
+            "cognito/confirm-email",
+            "cognito/confirm-signup",
+            "cognito/tokens",
+            "cognito/refresh-token"
     );
 
 
@@ -59,6 +70,16 @@ public class BasicAuthenticationFilter implements Filter {
 
         HttpServletRequest request = (HttpServletRequest) servletRequest;
         HttpServletResponse response = (HttpServletResponse) servletResponse;
+
+        // Debug logging for WebSocket
+        String uri = request.getRequestURI();
+
+        if (uri.contains("wheeloffortune")) {
+            System.out.println("=== BasicAuthFilter: WebSocket request detected, allowing through ===");
+            filterChain.doFilter(servletRequest, servletResponse);
+            return;
+        }
+
         if (!enableBasic) {
             filterChain.doFilter(servletRequest, servletResponse);
             return;

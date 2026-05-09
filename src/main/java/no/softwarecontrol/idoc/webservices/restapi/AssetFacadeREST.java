@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
@@ -23,6 +24,7 @@ import no.softwarecontrol.idoc.webservices.persistence.LocalEntityManagerFactory
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * @author ovesteinsland
@@ -32,11 +34,18 @@ import java.util.UUID;
 @RolesAllowed({"ApplicationRole"})
 public class AssetFacadeREST extends AbstractFacade<Asset> {
 
-//    @PersistenceContext(unitName = "no.softwarecontrol_iDocWebServices_war_1.0-SNAPSHOTPU")
-//    private EntityManager em;
+    public static AssetFacadeREST instance;
 
     public AssetFacadeREST() {
         super(Asset.class);
+        instance = this;
+    }
+
+    public static AssetFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new AssetFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -48,8 +57,8 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
     @Override
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(Asset entity) {
-        for(Equipment equipment: entity.getEquipmentList()) {
-            for(Equipment child: entity.getEquipmentList()) {
+        for (Equipment equipment : entity.getEquipmentList()) {
+            for (Equipment child : entity.getEquipmentList()) {
                 child.setParent(equipment);
             }
         }
@@ -61,15 +70,14 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
     @Path("createWithAssetGroup/{assetGroupId}/")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithAssetGroup(@PathParam("assetGroupId") String assetGroupId, Asset asset) {
-        AssetGroupFacadeREST assetGroupFacadeREST = new AssetGroupFacadeREST();
-        AssetGroup assetGroup = assetGroupFacadeREST.find(assetGroupId);
+        AssetGroup assetGroup = AssetGroupFacadeREST.getInstance().find(assetGroupId);
         fixLocationList(asset, asset.getLocationList());
         fixEquipmentList(asset, asset.getEquipmentList());
         if (asset != null && assetGroup != null) {
             asset.setAssetGroup(assetGroup);
             assetGroup.getAssetList().add(asset);
             super.create(asset);
-            assetGroupFacadeREST.edit(assetGroup);
+            AssetGroupFacadeREST.getInstance().edit(assetGroup);
         }
     }
 
@@ -81,47 +89,49 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
             @PathParam("authorityId") String authorityId,
             @PathParam("companyId") String companyId,
             Asset asset) {
-        AssetGroupFacadeREST assetGroupFacadeREST = new AssetGroupFacadeREST();
-        AssetGroup assetGroup = assetGroupFacadeREST.find(assetGroupId);
+        AssetGroup assetGroup = AssetGroupFacadeREST.getInstance().find(assetGroupId);
         fixLocationList(asset, asset.getLocationList());
         fixEquipmentList(asset, asset.getEquipmentList());
         if (asset != null && assetGroup != null) {
             asset.setAssetGroup(assetGroup);
             assetGroup.getAssetList().add(asset);
             super.create(asset);
-            assetGroupFacadeREST.edit(assetGroup);
+            AssetGroupFacadeREST.getInstance().edit(assetGroup);
 
             // link to companies
-            linkCompany(companyId,asset);
+            linkCompany(companyId, asset);
             linkCompany(authorityId, asset);
         }
     }
 
     private void saveAssetGroup(Asset asset) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            tx.begin();
-            final int i = em.createNativeQuery(
-                    "UPDATE asset SET asset_group = ?\n" +
-                            "WHERE (asset_id = ?);"
-            ).setParameter(1, asset.getAssetGroup().getAssetGroupId())
-                    .setParameter(2, asset.getAssetId())
-                    .executeUpdate();
-            tx.commit();
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("------------------------------------------------");
-            System.out.println("Exception while update asset.asset_group: " + exp.getMessage());
-            System.out.println("**************************************************************");
-        } finally {
-            em.close();
-        }
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            EntityTransaction tx = em.getTransaction();
+            try {
+                tx.begin();
+                em.createNativeQuery(
+                                "UPDATE asset SET asset_group = ? " +
+                                        "WHERE asset_id = ?"
+                        ).setParameter(1, asset.getAssetGroup().getAssetGroupId())
+                        .setParameter(2, asset.getAssetId())
+                        .executeUpdate();
+                tx.commit();
+            } catch (Exception e) {
+                if (tx.isActive()) {
+                    tx.rollback();
+                }
+                System.out.println("------------------------------------------------");
+                System.out.println("Exception while updating asset.asset_group: " + e.getMessage());
+                System.out.println("Asset ID: " + asset.getAssetId());
+                System.out.println("------------------------------------------------");
+                throw new RuntimeException("Failed to update asset group", e);
+            }
+        } // EntityManager lukkes automatisk her
     }
 
+
     public void replaceCustomer(String oldCustomerId, String newCustomerId, Asset asset) {
-        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-        Company newCustomer = companyFacadeREST.findNative(newCustomerId);
+        Company newCustomer = CompanyFacadeREST.getInstance().findNative(newCustomerId);
         List<AssetGroup> assetGroups = newCustomer.getAssetGroupList();
         if (!assetGroups.isEmpty()) {
             AssetGroup assetGroup = assetGroups.get(0);
@@ -136,128 +146,150 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
     @Path("linkCompany/{companyId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkCompany(@PathParam("companyId") String companyId, Asset entity) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_asset \n " +
-                    " WHERE company_company_id = ?1 AND asset_asset_id = ?2")
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            // Sjekk om linken allerede eksisterer
+            Query query = em.createNativeQuery(
+                            "SELECT COUNT(*) FROM company_has_asset " +
+                                    "WHERE company_company_id = ?1 AND asset_asset_id = ?2")
                     .setParameter(1, companyId)
                     .setParameter(2, entity.getAssetId());
 
             Number counter = (Number) query.getSingleResult();
+
             if (counter.intValue() == 0) {
-                tx.begin();
-                final int i = em.createNativeQuery(
-                        "INSERT INTO company_has_asset (company_company_id, asset_asset_id)\n" +
-                                "VALUES (?, ?);"
-                ).setParameter(1, companyId)
-                        .setParameter(2, entity.getAssetId())
-                        .executeUpdate();
-                tx.commit();
-            } else {
-                //System.out.println("No problem: company_has_project already exists");
+                EntityTransaction tx = em.getTransaction();
+                try {
+                    tx.begin();
+                    em.createNativeQuery(
+                                    "INSERT INTO company_has_asset (company_company_id, asset_asset_id) " +
+                                            "VALUES (?, ?)")
+                            .setParameter(1, companyId)
+                            .setParameter(2, entity.getAssetId())
+                            .executeUpdate();
+                    tx.commit();
+                } catch (Exception e) {
+                    if (tx.isActive()) {
+                        tx.rollback();
+                    }
+                    System.out.println("Exception while inserting into company_has_asset: " + e.getMessage());
+                    System.out.println("Company ID: " + companyId + ", Asset ID: " + entity.getAssetId());
+                    //throw new RuntimeException("Failed to link company to asset", e);
+                }
             }
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("Exception while inserting into company_has_asset: " + exp.getMessage());
-        } finally {
-            em.close();
-        }
+            // Link eksisterer allerede - ingen feilmelding nødvendig
+        } // EntityManager lukkes automatisk her
     }
 
     @GET
     @Path("linkCompanyOptimized/{companyId}/{assetId}")
-    @Consumes({MediaType.APPLICATION_JSON})
+    @Produces({MediaType.APPLICATION_JSON})
     public Integer linkCompanyOptimized(@PathParam("companyId") String companyId, @PathParam("assetId") String assetId) {
-        Integer intCounter = 0;
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_asset \n " +
-                            " WHERE company_company_id = ?1 AND asset_asset_id = ?2")
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            // Sjekk om linken allerede eksisterer
+            Query query = em.createNativeQuery(
+                            "SELECT COUNT(*) FROM company_has_asset " +
+                                    "WHERE company_company_id = ?1 AND asset_asset_id = ?2")
                     .setParameter(1, companyId)
                     .setParameter(2, assetId);
 
             Number counter = (Number) query.getSingleResult();
+
             if (counter.intValue() == 0) {
-                tx.begin();
-                final int i = em.createNativeQuery(
-                                "INSERT INTO company_has_asset (company_company_id, asset_asset_id)\n" +
-                                        "VALUES (?, ?);"
-                        ).setParameter(1, companyId)
-                        .setParameter(2, assetId)
-                        .executeUpdate();
-                tx.commit();
-                intCounter = i;
+                EntityTransaction tx = em.getTransaction();
+                try {
+                    tx.begin();
+                    int rowsAffected = em.createNativeQuery(
+                                    "INSERT INTO company_has_asset (company_company_id, asset_asset_id) " +
+                                            "VALUES (?, ?)")
+                            .setParameter(1, companyId)
+                            .setParameter(2, assetId)
+                            .executeUpdate();
+                    tx.commit();
+                    return rowsAffected;
+                } catch (Exception e) {
+                    if (tx.isActive()) {
+                        tx.rollback();
+                    }
+                    System.out.println("Exception while inserting into company_has_asset: " + e.getMessage());
+                    System.out.println("Company ID: " + companyId + ", Asset ID: " + assetId);
+                    return 0;
+                }
             }
-        } catch (Exception exp) {
-            tx.rollback();
-        } finally {
-            em.close();
-            return intCounter;
-        }
+            // Link eksisterer allerede - returner 0
+            return 0;
+        } // EntityManager lukkes automatisk her
     }
+
 
     @PUT
     @Path("unlinkCompany/{companyId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void unlinkCompany(@PathParam("companyId") String companyId, Asset entity) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            EntityTransaction tx = em.getTransaction();
+            try {
+                tx.begin();
+                int deletedRows = em.createNativeQuery(
+                                "DELETE FROM company_has_asset " +
+                                        "WHERE company_company_id = ?1 AND asset_asset_id = ?2")
+                        .setParameter(1, companyId)
+                        .setParameter(2, entity.getAssetId())
+                        .executeUpdate();
+                tx.commit();
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            tx.begin();
-            Query query = em.createNativeQuery("DELETE FROM company_has_asset \n " +
-                    " WHERE company_company_id = ?1 AND asset_asset_id = ?2")
-                    .setParameter(1, companyId)
-                    .setParameter(2, entity.getAssetId());
-
-            Number counter = (Number) query.executeUpdate();
-            if (counter.intValue() == 1) {
-                System.out.println("DELETED company_has_asset SUCCEEDED");
+                if (deletedRows == 1) {
+                    System.out.println("Successfully deleted company_has_asset link: " +
+                            "Company ID: " + companyId + ", Asset ID: " + entity.getAssetId());
+                } else if (deletedRows == 0) {
+                    System.out.println("No company_has_asset link found to delete: " +
+                            "Company ID: " + companyId + ", Asset ID: " + entity.getAssetId());
+                }
+            } catch (Exception e) {
+                if (tx.isActive()) {
+                    tx.rollback();
+                }
+                System.out.println("Exception while deleting from company_has_asset: " + e.getMessage());
+                System.out.println("Company ID: " + companyId + ", Asset ID: " + entity.getAssetId());
+                throw new RuntimeException("Failed to unlink company from asset", e);
             }
-            tx.commit();
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("Exception while inserting into company_has_asset: " + exp.getMessage());
-        } finally {
-            em.close();
-        }
+        } // EntityManager lukkes automatisk her
     }
+
 
     @GET
     @Path("unlinkCompanyOptimized/{companyId}/{assetId}")
     @Consumes({MediaType.APPLICATION_JSON})
-    public Integer unlinkCompanyOptimized(@PathParam("companyId") String companyId,@PathParam("assetId") String assetId) {
-        Integer intCounter = 0;
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            tx.begin();
-            Query query = em.createNativeQuery("DELETE FROM company_has_asset \n " +
-                            " WHERE company_company_id = ?1 AND asset_asset_id = ?2")
-                    .setParameter(1, companyId)
-                    .setParameter(2, assetId);
-
-            Number counter = (Number) query.executeUpdate();
-            intCounter = counter.intValue();
-            tx.commit();
-
-        } catch (Exception exp) {
-            tx.rollback();
-        } finally {
-            em.close();
-            return intCounter;
-        }
+    public Integer unlinkCompanyOptimized(@PathParam("companyId") String companyId, @PathParam("assetId") String assetId) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            EntityTransaction tx = em.getTransaction();
+            try {
+                tx.begin();
+                int deletedRows = em.createNativeQuery(
+                                "DELETE FROM company_has_asset " +
+                                        "WHERE company_company_id = ?1 AND asset_asset_id = ?2")
+                        .setParameter(1, companyId)
+                        .setParameter(2, assetId)
+                        .executeUpdate();
+                tx.commit();
+                return deletedRows;
+            } catch (Exception e) {
+                if (tx.isActive()) {
+                    tx.rollback();
+                }
+                System.out.println("Exception while deleting from company_has_asset: " + e.getMessage());
+                System.out.println("Company ID: " + companyId + ", Asset ID: " + assetId);
+                return 0;
+            }
+        } // EntityManager lukkes automatisk her
     }
+
 
     @PUT
     @Path("linkCheckList/{checkListId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkCheckList(@PathParam("checkListId") String checkListId, Asset entity) {
-        CheckListFacadeREST checkListFacadeREST = new CheckListFacadeREST();
         Asset asset = this.find(entity.getAssetId());
-        CheckList checkList = checkListFacadeREST.find(checkListId);
+        CheckList checkList = CheckListFacadeREST.getInstance().find(checkListId);
         if (asset != null && checkList != null) {
             if (!asset.getCheckListList().contains(checkList)) {
                 asset.getCheckListList().add(checkList);
@@ -265,7 +297,7 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
             }
             if (!checkList.getAssetList().contains(asset)) {
                 checkList.getAssetList().add(asset);
-                checkListFacadeREST.edit(checkList);
+                CheckListFacadeREST.getInstance().edit(checkList);
             }
         }
     }
@@ -274,9 +306,8 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
     @Path("unlinkCheckList/{checkListId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void unlinkCheckList(@PathParam("checkListId") String checkListId, Asset entity) {
-        CheckListFacadeREST checkListFacadeREST = new CheckListFacadeREST();
         Asset asset = this.find(entity.getAssetId());
-        CheckList checkList = checkListFacadeREST.find(checkListId);
+        CheckList checkList = CheckListFacadeREST.getInstance().find(checkListId);
         if (asset != null && checkList != null) {
             if (asset.getCheckListList().contains(checkList)) {
                 asset.getCheckListList().remove(checkList);
@@ -284,7 +315,7 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
             }
             if (checkList.getAssetList().contains(asset)) {
                 checkList.getAssetList().remove(asset);
-                checkListFacadeREST.edit(checkList);
+                CheckListFacadeREST.getInstance().edit(checkList);
             }
         }
     }
@@ -382,7 +413,7 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
         //asset.getEquipmentList().clear();
         asset.setEquipmentList(new ArrayList<>());
         //asset.setLocationList(new ArrayList<>());
-        return  asset;
+        return asset;
     }
 
     @GET
@@ -392,10 +423,10 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
         Asset asset = findNative(id);
         //asset.getEquipmentList().clear();
         asset.setEquipmentList(new ArrayList<>());
-        for(Media media: asset.getImageList()) {
+        for (Media media : asset.getImageList()) {
             media.getAssetList().clear();
         }
-        for(Location location: asset.getLocationList()) {
+        for (Location location : asset.getLocationList()) {
             location.setAsset(null);
         }
         ObjectMapper objectMapper = new ObjectMapper();
@@ -409,7 +440,7 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
         assetAsString = objectMapper.writeValueAsString(asset);
 
         //asset.setLocationList(new ArrayList<>());
-        return  assetAsString;
+        return assetAsString;
     }
 
     @GET
@@ -420,76 +451,70 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
     }
 
     public Asset findNative(String id) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Asset> resultList = em.createNativeQuery(
+                            "SELECT * FROM asset c " +
+                                    "WHERE c.asset_id = ?1",
+                            Asset.class)
+                    .setParameter(1, id)
+                    .getResultList();
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Asset> resultList = (List<Asset>) em.createNativeQuery("SELECT "
-                        + "* FROM asset c\n"
-                        + "WHERE c.asset_id = ?1",
-                Asset.class)
-                .setParameter(1, id)
-                .getResultList();
-        em.close();
-        if (resultList.isEmpty()) {
-            return null;
-        } else {
-            for(Asset asset: resultList) {
-                if(asset.getAssetGroup() != null) {
-                    asset.setAssetGroupId(asset.getAssetGroup().getAssetGroupId());
-                }
-                // EMERGENCY-OPTIMIZING: Added for loop Dec. 4th, 2023
-                for(Equipment equipment: asset.getEquipmentList()) {
-                    equipment.setMeasurementList(new ArrayList<>());
-                    equipment.setNameString(equipment.getFullName());
-                }
+            if (resultList.isEmpty()) {
+                return null;
             }
-            return resultList.get(0);
-        }
-    }
 
-    private Asset findNative2(String id) {
-        Asset asset = null;
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Asset> resultList = (List<Asset>) em.createNativeQuery("SELECT "
-                        + "* FROM asset a\n"
-                        + "WHERE a.asset_id = ?1",
-                Asset.class)
-                .setParameter(1, id)
-                .getResultList();
-        em.close();
-        if (resultList.isEmpty()) {
-            return null;
-        } else {
-            return resultList.get(0);
-        }
+            Asset asset = resultList.get(0);
+
+            // Sett AssetGroup ID hvis det finnes
+            if (asset.getAssetGroup() != null) {
+                asset.setAssetGroupId(asset.getAssetGroup().getAssetGroupId());
+            }
+
+            // EMERGENCY-OPTIMIZING: Added for loop Dec. 4th, 2023
+            // Optimaliser Equipment-listen
+            for (Equipment equipment : asset.getEquipmentList()) {
+                equipment.setMeasurementList(new ArrayList<>());
+                equipment.setNameString(equipment.getFullName());
+            }
+
+            return asset;
+        } catch (Exception e) {
+            System.out.println("Exception in findNative for Asset ID: " + id);
+            System.out.println("Error: " + e.getMessage());
+            throw new InternalServerErrorException("Failed to find asset: " + e.getMessage(), e);
+        } // EntityManager lukkes automatisk her
     }
 
     @GET
     @Path("loadByAuthority/{ownerId}/{authorityId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Asset> loadByAuthority(@PathParam("ownerId") String ownerId, @PathParam("authorityId") String authorityId) {
-
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Asset> resultList = (List<Asset>) em.createNativeQuery("SELECT asset.* \n"
-                        + " FROM asset asset\n "
-                        + " join asset_group ag on ag.asset_group_id = asset.asset_group\n "
-                        + " join company_has_asset_group chag on chag.asset_group_asset_group_id = ag.asset_group_id\n"
-                        + " join company_has_asset cha on cha.asset_asset_id = asset.asset_id\n"
-                        + " WHERE chag.company_company_id = ?1 and cha.company_company_id =?2",
-                Asset.class)
-                .setParameter(1, ownerId)
-                .setParameter(2, authorityId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            return em.createNativeQuery(
+                            "SELECT asset.* " +
+                                    "FROM asset asset " +
+                                    "JOIN asset_group ag ON ag.asset_group_id = asset.asset_group " +
+                                    "JOIN company_has_asset_group chag ON chag.asset_group_asset_group_id = ag.asset_group_id " +
+                                    "JOIN company_has_asset cha ON cha.asset_asset_id = asset.asset_id " +
+                                    "WHERE chag.company_company_id = ?1 AND cha.company_company_id = ?2",
+                            Asset.class)
+                    .setParameter(1, ownerId)
+                    .setParameter(2, authorityId)
+                    .getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in loadByAuthority");
+            System.out.println("Owner ID: " + ownerId + ", Authority ID: " + authorityId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        } // EntityManager lukkes automatisk her
     }
-
     @GET
     @Path("loadByAuthorityOptimized/{ownerId}/{authorityId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Asset> loadByAuthorityOptimized(@PathParam("ownerId") String ownerId, @PathParam("authorityId") String authorityId) {
 
-        List<Asset> resultList = loadByAuthority(ownerId,authorityId);
-        for(Asset asset: resultList) {
+        List<Asset> resultList = loadByAuthority(ownerId, authorityId);
+        for (Asset asset : resultList) {
             asset.setEquipmentList(new ArrayList<>());
             asset.setLocationList(new ArrayList<>());
         }
@@ -509,19 +534,19 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
         return asset.getCheckListList();
     }
 
-    @GET
-    @Override
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<Asset> findAll() {
-        return super.findAll();
-    }
-
-    @GET
-    @Path("{from}/{to}")
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<Asset> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
-        return super.findRange(new int[]{from, to});
-    }
+//    @GET
+//    @Override
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<Asset> findAll() {
+//        return super.findAll();
+//    }
+//
+//    @GET
+//    @Path("{from}/{to}")
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<Asset> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
+//        return super.findRange(new int[]{from, to});
+//    }
 
     @GET
     @Path("count")
@@ -536,8 +561,7 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
     @Path("findByCompany/{companyid}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Asset> findByCompany(@PathParam("companyid") String companyId) {
-        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-        Company company = companyFacadeREST.find(companyId);
+        Company company = CompanyFacadeREST.getInstance().find(companyId);
         List<Asset> assets = company.getAssetList();
         return assets;
     }
@@ -546,74 +570,92 @@ public class AssetFacadeREST extends AbstractFacade<Asset> {
     @Path("loadByOwner/{ownerId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Asset> loadByOwner(@PathParam("ownerId") String ownerId) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Asset> resultList = em.createNativeQuery(
+                            "SELECT asset.* " +
+                                    "FROM asset asset " +
+                                    "JOIN company_has_asset cha ON cha.asset_asset_id = asset.asset_id " +
+                                    "WHERE cha.company_company_id = ?1",
+                            Asset.class)
+                    .setParameter(1, ownerId)
+                    .getResultList();
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-//        List<Asset> resultList = (List<Asset>) em.createNativeQuery("SELECT asset.* \n"
-//                        + " FROM asset asset\n "
-//                        + " join asset_group ag on ag.asset_group_id = asset.asset_group\n "
-//                        + " join company_has_asset_group chag on chag.asset_group_asset_group_id = ag.asset_group_id\n"
-//                        + " WHERE chag.company_company_id = ?1",
-//                Asset.class)
-//                .setParameter(1, ownerId)
-//                .getResultList();
-        List<Asset> resultList = (List<Asset>) em.createNativeQuery("SELECT asset.* \n"
-                        + " FROM asset asset\n "
-                        + " join company_has_asset cha on cha.asset_asset_id = asset.asset_id\n "
-                        + " WHERE cha.company_company_id = ?1",
-                Asset.class)
-                .setParameter(1, ownerId)
-                .getResultList();
-        em.close();
-        for(Asset asset: resultList) {
-            asset.setEquipmentList(new ArrayList<>());
-            asset.setLocationList(new ArrayList<>());
-        }
-        return resultList;
+            // Optimaliser resultatet ved å tømme lister
+            for (Asset asset : resultList) {
+                asset.setEquipmentList(new ArrayList<>());
+                asset.setLocationList(new ArrayList<>());
+            }
+
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception in loadByOwner for Owner ID: " + ownerId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        } // EntityManager lukkes automatisk her
     }
 
     @PUT
     @Path("loadByIntegrations/{service}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Asset> loadByIntegrations(@PathParam("service") String service, List<String> primaryKeys) {
-
-        String assetIdsString = "(";
-        for (String assetId : primaryKeys) {
-            assetIdsString += "'" + assetId + "',";
+        // Håndter tomme eller null lister
+        if (primaryKeys == null || primaryKeys.isEmpty()) {
+            return new ArrayList<>();
         }
-        assetIdsString = assetIdsString.substring(0, assetIdsString.length() - 1);
-        assetIdsString += ")";
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Asset> resultList = (List<Asset>) em.createNativeQuery("SELECT "
-                                + "* FROM asset a\n"
-                                + "JOIN asset_has_integration ahi on ahi.asset_asset_id = a.asset_id \n"
-                                + "JOIN integration i on i.integration_id = ahi.integration_integration_id \n"
-                                + "WHERE i.keyy = 'PRIMARY_KEY' AND  i.service = ?1 AND i.valuee IN " + assetIdsString + "\n",
-                        Asset.class)
-                .setParameter(1, service)
-                .setParameter(2, assetIdsString)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            // Bygg SQL med riktig antall placeholders
+            String placeholders = primaryKeys.stream()
+                    .map(k -> "?")
+                    .collect(Collectors.joining(","));
+
+            String sql = "SELECT a.* " +
+                    "FROM asset a " +
+                    "JOIN asset_has_integration ahi ON ahi.asset_asset_id = a.asset_id " +
+                    "JOIN integration i ON i.integration_id = ahi.integration_integration_id " +
+                    "WHERE i.keyy = 'PRIMARY_KEY' AND i.service = ? AND i.valuee IN (" + placeholders + ")";
+
+            jakarta.persistence.Query query = em.createNativeQuery(sql, Asset.class);
+
+            // Sett service som første parameter
+            query.setParameter(1, service);
+
+            // Sett alle primaryKeys som påfølgende parametere
+            int paramIndex = 2;
+            for (String primaryKey : primaryKeys) {
+                query.setParameter(paramIndex++, primaryKey);
+            }
+
+            return query.getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in loadByIntegrations");
+            System.out.println("Service: " + service + ", Primary keys count: " + primaryKeys.size());
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     @GET
     @Path("loadByIntegration/{service}/{primaryKey}")
     @Produces({MediaType.APPLICATION_JSON})
-    public List<Asset> loadByIntegration(@PathParam("service") String service,@PathParam("primaryKey") String primaryKey) {
-
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Asset> resultList = (List<Asset>) em.createNativeQuery("SELECT "
-                                + "* FROM asset a\n"
-                                + "JOIN asset_has_integration ahi on ahi.asset_asset_id = a.asset_id \n"
-                                + "JOIN integration i on i.integration_id = chi.integration_integration_id \n"
-                                + "WHERE i.keyy = 'PRIMARY_KEY' AND  i.service = ?1 AND i.valuee = ?2",
-                        Company.class)
-                .setParameter(1, service)
-                .setParameter(2, primaryKey)
-                .getResultList();
-        em.close();
-        return resultList;
+    public List<Asset> loadByIntegration(@PathParam("service") String service, @PathParam("primaryKey") String primaryKey) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            return em.createNativeQuery(
+                            "SELECT a.* " +
+                                    "FROM asset a " +
+                                    "JOIN asset_has_integration ahi ON ahi.asset_asset_id = a.asset_id " +
+                                    "JOIN integration i ON i.integration_id = ahi.integration_integration_id " +
+                                    "WHERE i.keyy = 'PRIMARY_KEY' AND i.service = ?1 AND i.valuee = ?2",
+                            Asset.class)
+                    .setParameter(1, service)
+                    .setParameter(2, primaryKey)
+                    .getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in loadByIntegration");
+            System.out.println("Service: " + service + ", Primary key: " + primaryKey);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        } // EntityManager lukkes automatisk her
     }
 
 }

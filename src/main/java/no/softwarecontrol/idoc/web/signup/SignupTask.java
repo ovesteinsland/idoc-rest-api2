@@ -10,6 +10,7 @@ import no.softwarecontrol.idoc.data.entityhelper.ProjectParameters;
 import no.softwarecontrol.idoc.data.entityobject.*;
 import no.softwarecontrol.idoc.keysms.KeySmsController;
 import no.softwarecontrol.idoc.restclient.IDocWebResource;
+import no.softwarecontrol.idoc.restclient.SmsClient;
 import no.softwarecontrol.idoc.storage.MediaStorage;
 import no.softwarecontrol.idoc.webservices.restapi.*;
 import org.joda.time.DateTime;
@@ -266,24 +267,40 @@ public class SignupTask {
 
     private void sendToBernth(CustomerData customerData) {
 
-        String message = "Ny kunde registrert:\n\n";
-        message += String.format("%s %s\r\n", customerData.getFirstname(), customerData.getLastname());
-        message += String.format("Mobil: %s\r\n", customerData.getMobile());
-        message += String.format("E-post: %s\r\n", customerData.getEmail());
-        message += String.format("Firma: %s\r\n", customerData.getCompany());
+        try {
+            String regionName = get("COGNITO_REGION", null);
+            String apiKey = String.valueOf(SmsFacadeREST.loadApiKeyFromSecretsManager(regionName));
 
-        Sms sms = new Sms();
-        sms.setNumberList(new ArrayList<>());
-        sms.getNumberList().add("41793713");
-        sms.getNumberList().add("93044731");
-        KeySmsController keySmsController = new KeySmsController();
-        //String[] receivers = {"41793713"};
-        String[] receivers = new String[sms.getNumberList().size()];
-        for (int i = 0; i < receivers.length; i++) {
-            receivers[i] = sms.getNumberList().get(i);
+            String message = "Ny kunde registrert:\n\n";
+            message += String.format("%s %s\r\n", customerData.getFirstname(), customerData.getLastname());
+            message += String.format("Mobil: %s\r\n", customerData.getMobile());
+            message += String.format("E-post: %s\r\n", customerData.getEmail());
+            message += String.format("Firma: %s\r\n", customerData.getCompany());
+
+            SmsClient smsClient = new SmsClient();
+
+            Sms sms = new Sms();
+            sms.setMessage(message);
+            sms.setSenderId("os@softwarecontrol.no");
+            sms.setNumberList(new ArrayList<>());
+            sms.getNumberList().add("41793713");
+            sms.getNumberList().add("93044731");
+            smsClient.send(sms);
+
+
+
+//            KeySmsController keySmsController = new KeySmsController(apiKey);
+//            //String[] receivers = {"41793713"};
+//            String[] receivers = new String[sms.getNumberList().size()];
+//            for (int i = 0; i < receivers.length; i++) {
+//                receivers[i] = sms.getNumberList().get(i);
+//            }
+
+            //keySmsController.sendMessage(message, receivers);
+        } catch (Exception e) {
+            System.out.println("Error sending SMS");
+            //throw new RuntimeException(e);
         }
-
-        keySmsController.sendMessage(message, receivers);
     }
 
     private void createMeasurements(Observation observation) {
@@ -331,6 +348,13 @@ public class SignupTask {
                 equipmentId,
                 observation);
 
+    }
+
+    private static String get(String key, String def) {
+        String v = System.getProperty(key);
+        if (v == null || v.isBlank()) v = System.getenv(key);
+        if (v == null || v.isBlank()) v = def;
+        return v;
     }
 
     private void createLocations() {

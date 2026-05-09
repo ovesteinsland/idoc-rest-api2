@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
@@ -18,8 +19,18 @@ import java.util.stream.Collectors;
 @RolesAllowed({"ApplicationRole"})
 public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
 
+    private static AnswerValueFacadeREST instance;
+
     public AnswerValueFacadeREST() {
         super(AnswerValue.class);
+        instance = this;
+    }
+
+    public static AnswerValueFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new AnswerValueFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -46,9 +57,7 @@ public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
 
         try {
             create(checkListAnswerId, projectId, observationId, entity);
-
-            EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
-            Equipment equipment = equipmentFacadeREST.find(equipmentId);
+            Equipment equipment = EquipmentFacadeREST.getInstance().find(equipmentId);
             if (equipment != null) {
                 entity.setEquipment(equipment);
                 edit(entity);
@@ -65,30 +74,27 @@ public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
                        @PathParam("projectId") String projectId,
                        @PathParam("observationId") String observationId,
                        AnswerValue entity) throws Exception {
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-        ObservationFacadeREST observationFacadeREST = new ObservationFacadeREST();
+
         if (observationId != null) {
-            Observation observation = observationFacadeREST.findNative(observationId);
+            Observation observation = ObservationFacadeREST.getInstance().findNative(observationId);
             if (observation != null) {
                 entity.setObservation(observation);
             } else {
                 //System.out.println("Create answerValue: Observation not yet created...");
                 throw new UnsupportedMediaException("Create answerValue: Observation not yet created - Throw ERROR");
-
             }
         }
-        Project project = projectFacadeREST.findNative(projectId);
-        CheckListAnswerFacadeREST checkListAnswerFacadeREST = new CheckListAnswerFacadeREST();
-        checkListAnswerFacadeREST.find(checkListAnswerId);
-        CheckListAnswer checkListAnswer = checkListAnswerFacadeREST.find(checkListAnswerId);
+        Project project = ProjectFacadeREST.getInstance().findNative(projectId);
+
+        CheckListAnswer checkListAnswer = CheckListAnswerFacadeREST.getInstance().find(checkListAnswerId);
         if (project != null && checkListAnswer != null) {
             AnswerValue old = find(entity.getAnswerValueId());
             if (old == null) {
                 entity.setProject(project);
                 entity.setCheckListAnswer(checkListAnswer);
                 super.create(entity);
-                checkListAnswer.getAnswerValueList().add(entity);
-                checkListAnswerFacadeREST.edit(checkListAnswer);
+//                checkListAnswer.getAnswerValueList().add(entity);
+//                CheckListAnswerFacadeREST.getInstance().edit(checkListAnswer);
             }
         }
     }
@@ -121,26 +127,23 @@ public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
             @PathParam("observationId") String observationId,
             @PathParam("equipmentId") String equipmentId,
             AnswerValue entity) {
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-        ObservationFacadeREST observationFacadeREST = new ObservationFacadeREST();
-        EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
 
         AnswerValue existing = find(entity.getAnswerValueId());
         if(existing != null) {
             entity.setCheckListAnswer(existing.getCheckListAnswer());
         }
 
-        Project project = projectFacadeREST.findNative(projectId);
+        Project project = ProjectFacadeREST.getInstance().findNative(projectId);
         if(project != null) {
             entity.setProject(project);
         }
 
-        Equipment equipment = equipmentFacadeREST.findNative(equipmentId);
+        Equipment equipment = EquipmentFacadeREST.getInstance().findNative(equipmentId);
         if(equipment != null) {
             entity.setEquipment(equipment);
         }
 
-        Observation observation = observationFacadeREST.findNative(observationId);
+        Observation observation = ObservationFacadeREST.getInstance().findNative(observationId);
         if(observation != null) {
             entity.setObservation(observation);
         }
@@ -151,51 +154,63 @@ public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
     @Path("loadByCheckList/{checkList}/{project}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<AnswerValue> loadByCheckList(@PathParam("checkList") String checkListId, @PathParam("project") String project) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<AnswerValue> resultList = (List<AnswerValue>) em.createNativeQuery("SELECT * \n"
-                        + "FROM answer_value av \n"
-                        //+ "JOIN observation obs\n"
-                        //+ "	ON obs.observation_id = av.observation\n"
-                        + "WHERE av.project = ?1",
-                AnswerValue.class)
-                .setParameter(1, project)
-                .getResultList();
-        em.close();
-        List<AnswerValue> answerValues = new ArrayList<>();
-        for(AnswerValue answerValue: resultList) {
-            if(answerValue.getCheckListAnswer() != null) {
-                CheckListAnswer checkListAnswer = answerValue.getCheckListAnswer();
-                if(checkListAnswer.getCheckListQuestion() != null) {
-                    CheckListQuestion checkListQuestion = checkListAnswer.getCheckListQuestion();
-                    if(checkListQuestion.getCheckListSection() != null) {
-                        CheckListSection checkListSection = checkListQuestion.getCheckListSection();
-                        if(checkListSection.getCheckList() != null) {
-                            CheckList checkListo = checkListSection.getCheckList();
-                            if(checkListo.getCheckListId().equalsIgnoreCase(checkListId)) {
-                                answerValues.add(answerValue);
+
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<AnswerValue> resultList = (List<AnswerValue>) em.createNativeQuery("SELECT * \n"
+                                    + "FROM answer_value av \n"
+                                    //+ "JOIN observation obs\n"
+                                    //+ "	ON obs.observation_id = av.observation\n"
+                                    + "WHERE av.project = ?1",
+                            AnswerValue.class)
+                    .setParameter(1, project)
+                    .getResultList();
+
+            List<AnswerValue> answerValues = new ArrayList<>();
+            for (AnswerValue answerValue : resultList) {
+                if (answerValue.getObservation() != null) {
+                    answerValue.setObservation(optimizeObservation(answerValue.getObservation()));
+                }
+                if (answerValue.getCheckListAnswer() != null) {
+                    CheckListAnswer checkListAnswer = optimizeCheckListAnswer(answerValue.getCheckListAnswer());
+                    if (checkListAnswer.getCheckListQuestion() != null) {
+                        CheckListQuestion checkListQuestion = checkListAnswer.getCheckListQuestion();
+                        if (checkListQuestion.getCheckListSection() != null) {
+                            CheckListSection checkListSection = checkListQuestion.getCheckListSection();
+                            if (checkListSection.getCheckList() != null) {
+                                CheckList checkListo = checkListSection.getCheckList();
+                                if (checkListo.getCheckListId().equalsIgnoreCase(checkListId)) {
+                                    answerValues.add(answerValue);
+                                }
                             }
+                        } else {
+                            System.out.println("checkListQuestion.getCheckListSection() == null: AnswerValue id = " + answerValue.getAnswerValueId());
                         }
                     } else {
-                        System.out.println("checkListQuestion.getCheckListSection() == null: AnswerValue id = " + answerValue.getAnswerValueId());
+                        System.out.println("checkListAnswer.getCheckListQuestion() == null: AnswerValue id = " + answerValue.getAnswerValueId());
                     }
                 } else {
-                    System.out.println("checkListAnswer.getCheckListQuestion() == null: AnswerValue id = " + answerValue.getAnswerValueId());
+                    System.out.println("answerValue.getCheckListAnswer() == null: AnswerValue id = " + answerValue.getAnswerValueId());
                 }
-            } else {
-                System.out.println("answerValue.getCheckListAnswer() == null: AnswerValue id = " + answerValue.getAnswerValueId());
             }
+            return answerValues;
+        } catch (Exception e) {
+            return new ArrayList<>();
         }
-//        List<AnswerValue> filtered = resultList.stream()
-//                .filter(r -> r
-//                        .getCheckListAnswer()
-//                        .getCheckListQuestion()
-//                        .getCheckListSection()
-//                        .getCheckList()
-//                        .getCheckListId().equals(checkListId))
-//                .collect(Collectors.toList());
-        return answerValues;
     }
 
+    private CheckListAnswer optimizeCheckListAnswer(CheckListAnswer checkListAnswer) {
+        checkListAnswer.getQuickChoiceItemList().clear();
+        return checkListAnswer;
+    }
+
+    private Observation optimizeObservation(Observation observation) {
+        observation.getImageList().clear();
+        observation.getMeasurementList().clear();
+        observation.setQuickChoiceItem(null);
+        observation.setEquipment(null);
+        observation.setLocation(null);
+        return observation;
+    }
     @GET
     @Path("loadByEquipmentCheckList/{checkListId}/{projectId}/{equipmentId}")
     @Produces({MediaType.APPLICATION_JSON})
@@ -203,56 +218,63 @@ public class AnswerValueFacadeREST extends AbstractFacade<AnswerValue> {
             @PathParam("checkListId") String checkListId,
             @PathParam("projectId") String projectId,
             @PathParam("equipmentId") String equipmentId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<AnswerValue> resultList = (List<AnswerValue>) em.createNativeQuery("SELECT * \n"
-                        + "FROM answer_value av \n"
-                        //+ "JOIN observation obs\n"
-                        //+ "	ON obs.observation_id = av.observation\n"
-                        + "WHERE av.project = ?1 AND av.equipment = ?2",
-                AnswerValue.class)
-                .setParameter(1, projectId)
-                .setParameter(2, equipmentId)
-                .getResultList();
-        em.close();
-        List<AnswerValue> filtered = resultList.stream()
-                .filter(r -> r
-                        .getCheckListAnswer()
-                        .getCheckListQuestion()
-                        .getCheckListSection()
-                        .getCheckList()
-                        .getCheckListId().equals(checkListId))
-                .collect(Collectors.toList());
-        return filtered;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<AnswerValue> resultList = (List<AnswerValue>) em.createNativeQuery("SELECT * \n"
+                                    + "FROM answer_value av \n"
+                                    //+ "JOIN observation obs\n"
+                                    //+ "	ON obs.observation_id = av.observation\n"
+                                    + "WHERE av.project = ?1 AND av.equipment = ?2",
+                            AnswerValue.class)
+                    .setParameter(1, projectId)
+                    .setParameter(2, equipmentId)
+                    .getResultList();
+            List<AnswerValue> filtered = resultList.stream()
+                    .filter(r -> r
+                            .getCheckListAnswer()
+                            .getCheckListQuestion()
+                            .getCheckListSection()
+                            .getCheckList()
+                            .getCheckListId().equals(checkListId))
+                    .collect(Collectors.toList());
+            return filtered;
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
     }
 
     @GET
     @Path("loadByCheckListAnswer/{checkListAnswer}/{project}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<AnswerValue> loadByCheckListAnswer(@PathParam("checkListAnswer") String checklistanswer, @PathParam("project") String project) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<AnswerValue> resultList = (List<AnswerValue>) em.createNativeQuery("SELECT * \n"
-                        + "FROM answer_value av \n"
-                        + "WHERE av.check_list_answer = ?1 AND av.project = ?2",
-                AnswerValue.class)
-                .setParameter(1, checklistanswer)
-                .setParameter(2, project)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<AnswerValue> resultList = (List<AnswerValue>) em.createNativeQuery("SELECT * \n"
+                                    + "FROM answer_value av \n"
+                                    + "WHERE av.check_list_answer = ?1 AND av.project = ?2",
+                            AnswerValue.class)
+                    .setParameter(1, checklistanswer)
+                    .setParameter(2, project)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
     }
 
     @GET
     @Path("loadByObservation/{observationId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<AnswerValue> loadByObservation(@PathParam("observationId") String observationId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<AnswerValue> resultList = (List<AnswerValue>) em.createNativeQuery("SELECT * \n"
-                        + "FROM answer_value av \n"
-                        + "WHERE av.observation = ?1",
-                AnswerValue.class)
-                .setParameter(1, observationId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<AnswerValue> resultList = (List<AnswerValue>) em.createNativeQuery("SELECT * \n"
+                                    + "FROM answer_value av \n"
+                                    + "WHERE av.observation = ?1",
+                            AnswerValue.class)
+                    .setParameter(1, observationId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
     }
 }

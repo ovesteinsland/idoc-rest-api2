@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
@@ -26,12 +27,23 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class CheckListFacadeREST extends AbstractFacade<CheckList> {
 
+    private static CheckListFacadeREST instance;
+
+
     public CheckListFacadeREST() {
         super(CheckList.class);
+        instance = this;
+    }
+
+    public static CheckListFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new CheckListFacadeREST();
+        }
+        return instance;
     }
 
     @Override
-    protected String getSelectAllQuery(){
+    protected String getSelectAllQuery() {
         return "CheckList.findAll";
     }
 
@@ -47,7 +59,7 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void edit(@PathParam("id") String id, CheckList entity) {
         CheckList existing = this.find(entity.getCheckListId());
-        if(existing != null) {
+        if (existing != null) {
             existing.setName(entity.getName());
             existing.setSortIndex(entity.getSortIndex());
             existing.setDescription(entity.getDescription());
@@ -71,22 +83,22 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     }
 
     private CheckList optimize(CheckList optimized) {
-        for(Disipline disipline: optimized.getDisiplineList()) {
+        for (Disipline disipline : optimized.getDisiplineList()) {
             optimized.getDisiplineIds().add(disipline.getDisiplineId());
         }
         optimized.getDisiplineList().clear();
-        for(EquipmentType equipmentType: optimized.getEquipmentTypeList()) {
+        for (EquipmentType equipmentType : optimized.getEquipmentTypeList()) {
             optimized.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
         }
         optimized.getEquipmentTypeList().clear();
-        for(CheckListSection checkListSection: optimized.getCheckListSectionList()) {
-            for(CheckListQuestion checkListQuestion: checkListSection.getCheckListQuestionList()) {
-                for(EquipmentType equipmentType: checkListQuestion.getEquipmentTypeList()) {
+        for (CheckListSection checkListSection : optimized.getCheckListSectionList()) {
+            for (CheckListQuestion checkListQuestion : checkListSection.getCheckListQuestionList()) {
+                for (EquipmentType equipmentType : checkListQuestion.getEquipmentTypeList()) {
                     checkListQuestion.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
                 }
                 checkListQuestion.getEquipmentTypeList().clear();
-                for(CheckListAnswer checkListAnswer: checkListQuestion.getCheckListAnswerList()) {
-                    for(QuickChoiceItem quickChoiceItem: checkListAnswer.getQuickChoiceItemList()) {
+                for (CheckListAnswer checkListAnswer : checkListQuestion.getCheckListAnswerList()) {
+                    for (QuickChoiceItem quickChoiceItem : checkListAnswer.getQuickChoiceItemList()) {
                         checkListAnswer.getQuickChoiceItemIds().add(quickChoiceItem.getQuickChoiceItemId());
                     }
                     checkListAnswer.getQuickChoiceItemList().clear();
@@ -102,10 +114,10 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     public List<CheckList> findRoot() {
         List<CheckList> roots = new ArrayList<>();
         List<CheckList> checkLists = this.findAll();
-        for(CheckList checkList: checkLists)
-        for(EquipmentType equipmentType: checkList.getEquipmentTypeList()) {
-            checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
-        }
+        for (CheckList checkList : checkLists)
+            for (EquipmentType equipmentType : checkList.getEquipmentTypeList()) {
+                checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+            }
         for (CheckList checkList : checkLists) {
             if (checkList.getParent() == null) {
                 roots.add(checkList);
@@ -118,16 +130,20 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     @Path("loadAllByDisiplines")
     @Produces({MediaType.APPLICATION_JSON})
     public List<CheckList> loadAllByDisiplines() {
-        String sql = """
-                select DISTINCT cl.* from disipline_has_check_list dhcl
-                join check_list cl on dhcl.check_list = cl.check_list_id
-                """;
-
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<CheckList> resultList = (List<CheckList>) em.createNativeQuery(sql, CheckList.class)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            return em.createNativeQuery(
+                            """
+                                    SELECT DISTINCT cl.*
+                                    FROM disipline_has_check_list dhcl
+                                    JOIN check_list cl ON dhcl.check_list = cl.check_list_id
+                                    """,
+                            CheckList.class)
+                    .getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in loadAllByDisiplines");
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        } // EntityManager lukkes automatisk her
     }
 
     @GET
@@ -136,7 +152,7 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     public List<CheckListLite> loadAllByDisiplinesLites() {
         List<CheckList> roots = loadAllByDisiplines();
         List<CheckListLite> lites = new ArrayList<>();
-        for(CheckList checkList: roots) {
+        for (CheckList checkList : roots) {
             lites.add(new CheckListLite(checkList));
         }
         return lites;
@@ -146,26 +162,33 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     @Path("loadAllByEquipmentTypes")
     @Produces({MediaType.APPLICATION_JSON})
     public List<CheckList> loadAllByEquipmentTypes() {
-        String sql = """
-                select DISTINCT cl.* from equipment_type_has_check_list ethcl
-                join check_list cl on ethcl.check_list_check_list_id = cl.check_list_id
-                
-                """;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<CheckList> resultList = em.createNativeQuery(
+                            """
+                                    SELECT DISTINCT cl.*
+                                    FROM equipment_type_has_check_list ethcl
+                                    JOIN check_list cl ON ethcl.check_list_check_list_id = cl.check_list_id
+                                    """,
+                            CheckList.class)
+                    .getResultList();
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<CheckList> resultList = (List<CheckList>) em.createNativeQuery(sql, CheckList.class)
-                .getResultList();
-        em.close();
-
-        for(CheckList checkList: resultList) {
-            for(EquipmentType equipmentType: checkList.getEquipmentTypeList()) {
-                if(!checkList.getEquipmentTypeIds().contains(equipmentType.getEquipmentTypeId())) {
-                    checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+            // Bygg opp equipment type ID-liste
+            for (CheckList checkList : resultList) {
+                for (EquipmentType equipmentType : checkList.getEquipmentTypeList()) {
+                    if (!checkList.getEquipmentTypeIds().contains(equipmentType.getEquipmentTypeId())) {
+                        checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+                    }
                 }
             }
-        }
-        return resultList;
+
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception in loadAllByEquipmentTypes");
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        } // EntityManager lukkes automatisk her
     }
+
 
     @GET
     @Path("loadAllByEquipmentTypesLites")
@@ -174,7 +197,7 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
         List<CheckList> roots = loadAllByEquipmentTypes();
 
         List<CheckListLite> lites = new ArrayList<>();
-        for(CheckList checkList: roots) {
+        for (CheckList checkList : roots) {
             lites.add(new CheckListLite(checkList));
 
         }
@@ -185,17 +208,36 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     @Path("loadByDisipline/{disiplineId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<CheckList> loadByDisipline(@PathParam("disiplineId") String disiplineId) {
-        DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
-        Disipline disipline = disiplineFacadeREST.find(disiplineId);
-        return disipline.getCheckListList();
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            Disipline disipline = DisiplineFacadeREST.getInstance().find(disiplineId);
+            List<CheckList> checkLists = disipline.getCheckListList();
+            return checkLists;
+//            String sql = """
+//
+//                        select * from check_list cl
+//                             join disipline_has_check_list dhcl on dhcl.check_list = cl.check_list_id
+//                             join check_list_section clss on clss.check_list = cl.check_list_id
+//                             join check_list_question clq on clq.check_list_section = clss.check_list_section_id
+//                             join check_list_answer cla on cla.check_list_question = clq.check_list_question_id
+//                    where dhcl.disipline = ?1
+//
+//                    """;
+//            List<CheckList> resultList = (List<CheckList>) em.createNativeQuery(sql, CheckList.class)
+//                    .setParameter(1, disiplineId)
+//                    .getResultList();
+//            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved søk etter brukere: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke søke etter brukere", e);
+        }
     }
 
     @GET
     @Path("loadByAsset/{assetId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<CheckList> loadByAsset(@PathParam("assetId") String assetId) {
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        Asset asset = assetFacadeREST.find(assetId);
+        Asset asset = AssetFacadeREST.getInstance().find(assetId);
         return asset.getCheckListList();
     }
 
@@ -203,34 +245,41 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     @Path("loadByEquipmentType/{equipmentTypeId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<CheckList> loadByEquipmentType(@PathParam("equipmentTypeId") String equipmentTypeId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<CheckList> resultList = (List<CheckList>) em.createNativeQuery("SELECT " +
-                        "c.* FROM check_list c " +
-                        "JOIN equipment_type_has_check_list ethcl ON ethcl.check_list_check_list_id = c.check_list_id " +
-                        "WHERE ethcl.equipment_type_equipment_type_id = ?1",
-                CheckList.class)
-                .setParameter(1, equipmentTypeId)
-                .getResultList();
-        em.close();
-        for(CheckList checkList: resultList) {
-            for (EquipmentType equipmentType : checkList.getEquipmentTypeList()) {
-                checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<CheckList> resultList = em.createNativeQuery(
+                            "SELECT c.* " +
+                                    "FROM check_list c " +
+                                    "JOIN equipment_type_has_check_list ethcl ON ethcl.check_list_check_list_id = c.check_list_id " +
+                                    "WHERE ethcl.equipment_type_equipment_type_id = ?1",
+                            CheckList.class)
+                    .setParameter(1, equipmentTypeId)
+                    .getResultList();
+
+            // Bygg opp equipment type ID-liste
+            for (CheckList checkList : resultList) {
+                for (EquipmentType equipmentType : checkList.getEquipmentTypeList()) {
+                    checkList.getEquipmentTypeIds().add(equipmentType.getEquipmentTypeId());
+                }
             }
-        }
-        return  resultList;
+
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception in loadByEquipmentType for Equipment Type ID: " + equipmentTypeId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        } // EntityManager lukkes automatisk her
     }
 
     @GET
     @Path("loadByEquipmentTypeOptimized/{equipmentTypeId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<CheckList> loadByEquipmentTypeOptimized(@PathParam("equipmentTypeId") String equipmentTypeId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
         List<CheckList> resultList = loadByEquipmentType(equipmentTypeId);
         List<CheckList> optimizedList = new ArrayList<>();
-        for(CheckList checkList: resultList) {
+        for (CheckList checkList : resultList) {
             optimizedList.add(optimize(checkList));
         }
-        return  optimizedList;
+        return optimizedList;
     }
 
     @GET
@@ -246,7 +295,7 @@ public class CheckListFacadeREST extends AbstractFacade<CheckList> {
     public List<CheckListLite> findAllLites() {
         List<CheckList> roots = findAll();
         List<CheckListLite> lites = new ArrayList<>();
-        for(CheckList checkList: roots) {
+        for (CheckList checkList : roots) {
             lites.add(new CheckListLite(checkList));
         }
         return lites;

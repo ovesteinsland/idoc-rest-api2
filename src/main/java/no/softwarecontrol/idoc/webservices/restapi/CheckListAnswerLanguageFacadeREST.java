@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -14,9 +15,21 @@ import no.softwarecontrol.idoc.data.entityobject.CheckListQuestionLanguage;
 @RolesAllowed({"ApplicationRole"})
 public class CheckListAnswerLanguageFacadeREST extends AbstractFacade<CheckListAnswerLanguage> {
 
+    private static CheckListAnswerLanguageFacadeREST instance;
+
+
     public CheckListAnswerLanguageFacadeREST() {
         super(CheckListAnswerLanguage.class);
+        instance = this;
     }
+
+    public static CheckListAnswerLanguageFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new CheckListAnswerLanguageFacadeREST();
+        }
+        return instance;
+    }
+
     @Override
     protected String getSelectAllQuery(){
         return "CheckListAnswerLanguage.findAll";
@@ -26,8 +39,7 @@ public class CheckListAnswerLanguageFacadeREST extends AbstractFacade<CheckListA
     @Path("create/{checkListAnswerId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("checkListAnswerId") String checkListAnswerId, CheckListAnswerLanguage entity) {
-        CheckListAnswerFacadeREST checkListAnswerFacadeREST = new CheckListAnswerFacadeREST();
-        CheckListAnswer checkListAnswer = checkListAnswerFacadeREST.find(checkListAnswerId);
+        CheckListAnswer checkListAnswer = CheckListAnswerFacadeREST.getInstance().find(checkListAnswerId);
         entity.setCheckListAnswer(checkListAnswer);
         super.create(entity);
     }

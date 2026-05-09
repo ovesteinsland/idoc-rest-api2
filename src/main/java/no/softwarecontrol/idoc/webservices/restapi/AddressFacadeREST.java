@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -23,8 +24,18 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class AddressFacadeREST extends AbstractFacade<Address> {
 
+    public static AddressFacadeREST instance;
+
     public AddressFacadeREST() {
         super(Address.class);
+        instance = this;
+    }
+
+    public static AddressFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new AddressFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -79,9 +90,8 @@ public class AddressFacadeREST extends AbstractFacade<Address> {
     @Path("linkCompany/{companyId}")
     @Consumes({ MediaType.APPLICATION_JSON})
     public void linkToCompany(@PathParam("companyId") String companyId,Address entity) {
-        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
         Address address = this.find(entity.getAddressId());
-        Company company = companyFacadeREST.find(companyId);
+        Company company = CompanyFacadeREST.getInstance().find(companyId);
         if (address != null && company != null) {
             if (!address.getCompanyList().contains(company)) {
                 address.getCompanyList().add(company);
@@ -89,7 +99,7 @@ public class AddressFacadeREST extends AbstractFacade<Address> {
             }
             if (!company.getAddressList().contains(address)) {
                 company.getAddressList().add(address);
-                companyFacadeREST.edit(company);
+                CompanyFacadeREST.getInstance().edit(company);
             }
         }
     }

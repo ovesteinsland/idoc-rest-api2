@@ -16,6 +16,9 @@ import java.util.Set;
  * JAX-RS filter for Cognito Bearer JWT.
  * - 401 ved manglende/ugyldig token
  * - 403 ved manglende rettigheter (scope/grupper)
+ *
+ *
+ *
  * Overgang: respekterer AUTH_ENABLE_BASIC slik at BasicAuth kan slippe gjennom.
  */
 @Provider
@@ -31,7 +34,14 @@ public class CognitoJwtAuthFilter implements ContainerRequestFilter {
     private static final java.util.Set<String> PUBLIC_PATHS = java.util.Set.of(
             "no.softwarecontrol.idoc.entityobject.user/countByLoginName",
             "no.softwarecontrol.idoc.entityobject.user/signupUser",
-            "no.softwarecontrol.idoc.entityobject.language"
+            "no.softwarecontrol.idoc.entityobject.user/authenticateUser",
+            "no.softwarecontrol.idoc.entityobject.language",
+            "cognito/login",
+            "cognito/register",
+            "cognito/confirm-email",
+            "cognito/confirm-signup",
+            "cognito/tokens",
+            "cognito/refresh-token"
     );
 
     @Override
@@ -40,11 +50,14 @@ public class CognitoJwtAuthFilter implements ContainerRequestFilter {
         String path = requestContext.getUriInfo().getPath(false);
         // Forventer base path: /iDocWebServices/webresources/*
         // ContainerRequestFilter trigges kun for JAX-RS, så dette er i praksis allerede begrenset.
+
         if (isPublicPath(path)) {
+            System.out.println("CognitoJwtAuthFilter: PUBLIC PATH - skipping auth");
             return;
         }
 
         if (!config.enableJwt) {
+            System.out.println("CognitoJwtAuthFilter: JWT disabled - skipping");
             // JWT deaktivert – tillat videre (f.eks. under migrering/testing)
             return;
         }
@@ -53,8 +66,10 @@ public class CognitoJwtAuthFilter implements ContainerRequestFilter {
         if (auth == null || auth.isBlank()) {
             // Overgang: la BasicAuth håndtere dersom aktivert, ellers 401
             if (config.enableBasic && hasBasicHeader()) {
+                System.out.println("CognitoJwtAuthFilter: has Basic header - skipping");
                 return;
             }
+            System.out.println("CognitoJwtAuthFilter: NO AUTH HEADER - aborting with 401");
             abort401(requestContext, "Mangler Authorization header");
             return;
         }

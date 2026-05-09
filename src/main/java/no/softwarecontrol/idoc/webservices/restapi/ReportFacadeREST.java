@@ -28,15 +28,19 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class ReportFacadeREST extends AbstractFacade<Report> {
 
-    @EJB
-    private ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-    @EJB
-    private CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-    @EJB
-    private DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
+    private static ReportFacadeREST instance;
+
 
     public ReportFacadeREST() {
         super(Report.class);
+        instance = this;
+    }
+
+    public static ReportFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new ReportFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -102,7 +106,7 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToProject(@PathParam("projectId") String projectId, Report entity) {
         Report report = this.find(entity.getReportId());
-        Project project = projectFacadeREST.find(projectId);
+        Project project = ProjectFacadeREST.getInstance().find(projectId);
         if (project != null && report != null) {
             if (!project.getReportList().contains(report)) {
                 project.getReportList().add(report);
@@ -111,36 +115,45 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
                 report.getProjectList().add(project);
 
             }
-            projectFacadeREST.editProjectOnly(project.getProjectId(),project);
+            ProjectFacadeREST.getInstance().editProjectOnly(project.getProjectId(),project);
             super.edit(report);
         }
     }
 
     public void linkToProjectNative(String projectId, String reportId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM project_has_report \n " +
-                            " WHERE project_project_id = ?1 AND report_report_id = ?2")
-                    .setParameter(1, projectId)
-                    .setParameter(2, reportId);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            EntityTransaction tx = em.getTransaction();
+            try {
+                Query query = em.createNativeQuery("""
+                    SELECT COUNT(*) FROM project_has_report
+                    WHERE project_project_id = ?1 AND report_report_id = ?2
+                    """)
+                        .setParameter(1, projectId)
+                        .setParameter(2, reportId);
 
-            Number counter = (Number) query.getSingleResult();
-            if (counter.intValue() == 0) {
-                tx.begin();
-                final int i = em.createNativeQuery(
-                                "INSERT INTO project_has_report (project_project_id, report_report_id)\n" +
-                                        "VALUES (?, ?);"
-                        ).setParameter(1, projectId)
-                        .setParameter(2, reportId)
-                        .executeUpdate();
-                tx.commit();
+                Number counter = (Number) query.getSingleResult();
+                if (counter.intValue() == 0) {
+                    tx.begin();
+                    final int i = em.createNativeQuery("""
+                        INSERT INTO project_has_report (project_project_id, report_report_id)
+                        VALUES (?, ?)
+                        """)
+                            .setParameter(1, projectId)
+                            .setParameter(2, reportId)
+                            .executeUpdate();
+                    tx.commit();
+                }
+            } catch (Exception exp) {
+                if (tx.isActive()) {
+                    tx.rollback();
+                }
+                System.out.println("Advarsel ved linking av rapport til prosjekt (kan allerede eksistere): " + exp.getMessage());
+                // Aksepterer at linken kan eksistere fra før - ingen exception kastes
             }
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("Exception while inserting into project_has_report: " + exp.getMessage());
-        } finally {
-            em.close();
+        } catch (Exception e) {
+            System.out.println("Feil ved opprettelse av EntityManager: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke linke rapport til prosjekt", e);
         }
     }
 
@@ -149,7 +162,7 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToCompany(@PathParam("companyId") String companyId, Report entity) {
         Report report = this.find(entity.getReportId());
-        Company company = companyFacadeREST.find(companyId);
+        Company company = CompanyFacadeREST.getInstance().find(companyId);
         if (company != null && report != null) {
             if (!company.getReportList().contains(report)) {
                 company.getReportList().add(report);
@@ -158,36 +171,45 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
                 report.getCompanyList().add(company);
 
             }
-            companyFacadeREST.edit(company);
+            CompanyFacadeREST.getInstance().edit(company);
             super.edit(report);
         }
     }
 
     public void linkToCompanyNative(String companyId, String reportId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_report \n " +
-                            " WHERE company_company_id = ?1 AND report_report_id = ?2")
-                    .setParameter(1, companyId)
-                    .setParameter(2, reportId);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            EntityTransaction tx = em.getTransaction();
+            try {
+                Query query = em.createNativeQuery("""
+                    SELECT COUNT(*) FROM company_has_report
+                    WHERE company_company_id = ?1 AND report_report_id = ?2
+                    """)
+                        .setParameter(1, companyId)
+                        .setParameter(2, reportId);
 
-            Number counter = (Number) query.getSingleResult();
-            if (counter.intValue() == 0) {
-                tx.begin();
-                final int i = em.createNativeQuery(
-                                "INSERT INTO company_has_report (company_company_id, report_report_id)\n" +
-                                        "VALUES (?, ?);"
-                        ).setParameter(1, companyId)
-                        .setParameter(2, reportId)
-                        .executeUpdate();
-                tx.commit();
+                Number counter = (Number) query.getSingleResult();
+                if (counter.intValue() == 0) {
+                    tx.begin();
+                    final int i = em.createNativeQuery("""
+                        INSERT INTO company_has_report (company_company_id, report_report_id)
+                        VALUES (?, ?)
+                        """)
+                            .setParameter(1, companyId)
+                            .setParameter(2, reportId)
+                            .executeUpdate();
+                    tx.commit();
+                }
+            } catch (Exception exp) {
+                if (tx.isActive()) {
+                    tx.rollback();
+                }
+                System.out.println("Advarsel ved linking av rapport til selskap (kan allerede eksistere): " + exp.getMessage());
+                // Aksepterer at linken kan eksistere fra før - ingen exception kastes
             }
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("Exception while inserting into project_has_report: " + exp.getMessage());
-        } finally {
-            em.close();
+        } catch (Exception e) {
+            System.out.println("Feil ved opprettelse av EntityManager: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke linke rapport til selskap", e);
         }
     }
 
@@ -197,13 +219,13 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToDisipline(@PathParam("disiplineId") String disiplineId, Report entity) {
         Report report = this.find(entity.getReportId());
-        Disipline disipline = disiplineFacadeREST.find(disiplineId);
+        Disipline disipline = DisiplineFacadeREST.getInstance().find(disiplineId);
         if (disipline != null && report != null) {
 //            if (!disipline.getReportList().contains(report)) {
 //                disipline.getReportList().add(report);
 //            }
             report.setDisipline(disipline);
-            disiplineFacadeREST.edit(disipline);
+            DisiplineFacadeREST.getInstance().edit(disipline);
             super.edit(report);
         }
     }
@@ -213,11 +235,10 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void removeSections(@PathParam("id") String id, Report entity) {
         Report report = this.find(entity.getReportId());
-        ReportSectionFacadeREST reportSectionFacadeREST = new ReportSectionFacadeREST();
         List<ReportSection> reportSections = new ArrayList(report.getReportSectionList());
         for (int i = 0; i < reportSections.size(); i++) {
             String sectionId = reportSections.get(i).getReportSectionId();
-            reportSectionFacadeREST.remove(sectionId);
+            ReportSectionFacadeREST.getInstance().remove(sectionId);
         }
         report.getReportSectionList().clear();
         super.edit(report);
@@ -257,7 +278,7 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Produces({MediaType.APPLICATION_JSON})
     public List<Report> findByCompany(@PathParam("companyId") String companyId) {
         List<Report> result = new ArrayList<>();
-        Company company = companyFacadeREST.find(companyId);
+        Company company = CompanyFacadeREST.getInstance().find(companyId);
         if (company != null) {
             for (Report report : company.getReportList()) {
                 result.add(report);
@@ -270,68 +291,88 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Path("loadTemplateByCompany/{companyId}/{disiplineId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Report> loadTemplateByCompany(@PathParam("companyId") String companyId, @PathParam("disiplineId") String disiplineId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT "
-                                + "* FROM report r\n"
-                                + "JOIN company_has_report chr on chr.report_report_id = r.report_id \n"
-                                + "WHERE chr.company_company_id = ?1 AND  r.disipline = ?2",
-                        Report.class)
-                .setParameter(1, companyId)
-                .setParameter(2, disiplineId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Report> resultList = (List<Report>) em.createNativeQuery("""
+                SELECT * FROM report r
+                JOIN company_has_report chr ON chr.report_report_id = r.report_id
+                WHERE chr.company_company_id = ?1 AND r.disipline = ?2
+                """, Report.class)
+                    .setParameter(1, companyId)
+                    .setParameter(2, disiplineId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved lasting av rapportmaler for selskap: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke laste rapportmaler for selskap", e);
+        }
     }
 
     @GET
     @Path("loadMasterByDisipline/{disiplineId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Report> loadMasterByDisipline(@PathParam("disiplineId") String disiplineId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT DISTINCT r.* FROM report r \n"
-                                + "LEFT JOIN report_section rs on rs.report = r.report_id  \n"
-                                + "LEFT JOIN report_section_language rsl on rsl.report_section = rs.report_section_id  \n"
-                                + "WHERE r.disipline = ?1 AND r.is_master = 1",
-                        Report.class)
-                .setParameter(1, disiplineId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Report> resultList = (List<Report>) em.createNativeQuery("""
+                SELECT DISTINCT r.* FROM report r
+                LEFT JOIN report_section rs ON rs.report = r.report_id
+                LEFT JOIN report_section_language rsl ON rsl.report_section = rs.report_section_id
+                WHERE r.disipline = ?1 AND r.is_master = 1
+                """, Report.class)
+                    .setParameter(1, disiplineId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved lasting av master-rapporter for disiplin: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke laste master-rapporter for disiplin", e);
+        }
     }
 
     @GET
     @Path("loadByProject/{projectId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Report> loadByProject(@PathParam("projectId") String projectId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT DISTINCT r.* FROM report r \n"
-                                + "JOIN project_has_report phr on phr.report_report_id = r.report_id \n"
-                                + "LEFT JOIN report_section rs on rs.report = r.report_id  \n"
-                                + "LEFT JOIN report_section_language rsl on rsl.report_section = rs.report_section_id  \n"
-                                + "WHERE phr.project_project_id = ?1",
-                        Report.class)
-                .setParameter(1, projectId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Report> resultList = (List<Report>) em.createNativeQuery("""
+                SELECT DISTINCT r.* FROM report r
+                JOIN project_has_report phr ON phr.report_report_id = r.report_id
+                LEFT JOIN report_section rs ON rs.report = r.report_id
+                LEFT JOIN report_section_language rsl ON rsl.report_section = rs.report_section_id
+                WHERE phr.project_project_id = ?1
+                """, Report.class)
+                    .setParameter(1, projectId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved lasting av rapporter for prosjekt: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke laste rapporter for prosjekt", e);
+        }
     }
 
     //
     @GET
     @Path("loadAllMasters")
     @Produces({MediaType.APPLICATION_JSON})
+
     public List<Report> loadAllMasters() {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT *\n"
-                                + "FROM report \n"
-                                + "WHERE is_master = 1",
-                        Report.class)
-                .getResultList();
-        em.close();
-        for(Report report: resultList) {
-            report.setDisipline(null);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Report> resultList = (List<Report>) em.createNativeQuery("""
+                SELECT * FROM report
+                WHERE is_master = 1
+                """, Report.class)
+                    .getResultList();
+
+            for (Report report : resultList) {
+                report.setDisipline(null);
+            }
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved lasting av alle master-rapporter: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke laste alle master-rapporter", e);
         }
-        return resultList;
     }
 
     @GET
@@ -340,7 +381,7 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Produces({MediaType.APPLICATION_JSON})
     public List<Report> findByProject(@PathParam("projectId") String projectId) {
         List<Report> result = new ArrayList<>();
-        Project project = projectFacadeREST.find(projectId);
+        Project project = ProjectFacadeREST.getInstance().find(projectId);
         if (project != null) {
             for (Report report : project.getReportList()) {
                 result.add(report);
@@ -353,18 +394,20 @@ public class ReportFacadeREST extends AbstractFacade<Report> {
     @Path("findRootByDisipline/{disiplineId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Report> findRootByDisipline(@PathParam("disiplineId") String disiplineId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-        List<Report> resultList = (List<Report>) em.createNativeQuery("SELECT *\n"
-                        + "FROM report \n"
-                        + "WHERE disipline = ?1 AND is_master = ?2",
-                Report.class)
-                .setParameter(1, disiplineId)
-                .setParameter(2, true)
-                .getResultList();
-
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Report> resultList = (List<Report>) em.createNativeQuery("""
+                SELECT * FROM report
+                WHERE disipline = ?1 AND is_master = ?2
+                """, Report.class)
+                    .setParameter(1, disiplineId)
+                    .setParameter(2, true)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved søk etter root-rapporter for disiplin: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke finne root-rapporter for disiplin", e);
+        }
     }
 
     @GET

@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -25,6 +26,11 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class MessageFacadeREST extends AbstractFacade<Message> {
 
+    @EJB
+    ConversationFacadeREST conversationFacadeREST;
+    @EJB
+    UserFacadeREST userFacadeREST;
+
     public MessageFacadeREST() {
         super(Message.class);
     }
@@ -38,7 +44,6 @@ public class MessageFacadeREST extends AbstractFacade<Message> {
     @Path("linkToConversation/{conversationId}")
     @Consumes({ MediaType.APPLICATION_JSON})
     public void linkToConversation(@PathParam("conversationId") String conversationId, Message entity) {
-        ConversationFacadeREST conversationFacadeREST = new ConversationFacadeREST();
         Message message = this.find(entity.getMessageId());
         Conversation conversation = conversationFacadeREST.find(conversationId);
         if (message != null && conversation != null) {
@@ -53,7 +58,7 @@ public class MessageFacadeREST extends AbstractFacade<Message> {
     @Path("linkToUser/{userId}")
     @Consumes({ MediaType.APPLICATION_JSON})
     public void linkToUser(@PathParam("userId") String userId, Message entity) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
+
         Message message = this.find(entity.getMessageId());
         User user = userFacadeREST.find(userId);
         if (message != null && user != null) {
@@ -68,7 +73,6 @@ public class MessageFacadeREST extends AbstractFacade<Message> {
     @Path("createWithConversation/{conversationId}")
     @Consumes({ MediaType.APPLICATION_JSON})
     public void createWithConversation(@PathParam("conversationId") String conversationId, Message message) {
-        ConversationFacadeREST conversationFacadeREST = new ConversationFacadeREST();
         Conversation conversation = conversationFacadeREST.find(conversationId);
         if (conversation != null && message != null) {
             conversation.getMessageList().add(message);

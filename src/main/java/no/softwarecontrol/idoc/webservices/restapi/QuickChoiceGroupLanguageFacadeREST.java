@@ -2,6 +2,7 @@ package no.softwarecontrol.idoc.webservices.restapi;
 
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -14,6 +15,7 @@ import no.softwarecontrol.idoc.data.entityobject.QuickChoiceGroupLanguage;
 @Path("no.softwarecontrol.idoc.entityobject.quickchoicegrouplanguage")
 @RolesAllowed({"ApplicationRole"})
 public class QuickChoiceGroupLanguageFacadeREST extends AbstractFacade<QuickChoiceGroupLanguage> {
+
 
     public QuickChoiceGroupLanguageFacadeREST() {
         super(QuickChoiceGroupLanguage.class);
@@ -28,8 +30,8 @@ public class QuickChoiceGroupLanguageFacadeREST extends AbstractFacade<QuickChoi
     @Path("create/{quickChoiceGroupId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("quickChoiceGroupId") String quickChoiceGroupId, QuickChoiceGroupLanguage entity) {
-        QuickChoiceGroupFacadeREST quickChoiceGroupFacadeREST = new QuickChoiceGroupFacadeREST();
-        QuickChoiceGroup quickChoiceGroup = quickChoiceGroupFacadeREST.find(quickChoiceGroupId);
+
+        QuickChoiceGroup quickChoiceGroup = QuickChoiceGroupFacadeREST.getInstance().find(quickChoiceGroupId);
         entity.setQuickChoiceGroup(quickChoiceGroup);
         super.create(entity);
     }

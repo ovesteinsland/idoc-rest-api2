@@ -23,8 +23,17 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class LanguageFacadeRest extends AbstractFacade<Language> {
 
+    private static LanguageFacadeRest instance;
     public LanguageFacadeRest() {
         super(Language.class);
+        instance = this;
+    }
+
+    public static LanguageFacadeRest getInstance() {
+        if (instance == null) {
+            instance = new LanguageFacadeRest();
+        }
+        return instance;
     }
 
     @Override

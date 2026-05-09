@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
@@ -40,8 +41,18 @@ import java.util.stream.Collectors;
 @RolesAllowed({"ApplicationRole"})
 public class ObservationFacadeREST extends AbstractFacade<Observation> {
 
+    public static ObservationFacadeREST instance;
+
     public ObservationFacadeREST() {
         super(Observation.class);
+        instance = this;
+    }
+
+    public static ObservationFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new ObservationFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -62,13 +73,13 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("createWithProject/{projectId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithProject(@PathParam("projectId") String projectId, Observation entity) {
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
+
         Observation existingObservation = this.find(entity.getObservationId());
 
         if (existingObservation == null) {
             entity.setCreatedDate(new Date());
 
-            Project project = projectFacadeREST.find(projectId);
+            Project project = ProjectFacadeREST.getInstance().find(projectId);
             if (project != null) {
                 if (!project.getObservationList().contains(entity)) {
                     project.getObservationList().add(entity);
@@ -76,16 +87,15 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 entity.setProject(project);
 
                 String equipmentId = entity.getEquipmentId();
-                EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
                 if (equipmentId != null) {
-                    Equipment equipment = equipmentFacadeREST.find(equipmentId);
+                    Equipment equipment = EquipmentFacadeREST.getInstance().find(equipmentId);
                     if (equipment != null) {
                         entity.setEquipment(equipment);
                     } else {
                         System.out.println("ObservationFacadeRest.createWithProject: Her skjer det ein feil med equipment");
                     }
                 }
-                projectFacadeREST.editProjectOnly(project.getProjectId(),project);
+                ProjectFacadeREST.getInstance().editProjectOnly(project.getProjectId(),project);
             }
         }
     }
@@ -104,7 +114,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithProject2(@PathParam("projectId") String projectId, Observation entity) throws Exception {
         Observation existingObservation = this.find(entity.getObservationId());
-        MeasurementFacadeREST measurementFacadeREST = new MeasurementFacadeREST();
+
         List<Measurement> measurements = new ArrayList<>(entity.getMeasurementList());
         if (existingObservation == null) {
             entity.setCreatedDate(new Date());
@@ -113,13 +123,11 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             if (entity.getEquipment() != null) {
                 equipmentId = entity.getEquipment().getEquipmentId();
             }
-            EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
-
 
             // Check if location is created
             if (entity.getLocation() != null) {
-                LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
-                Location existingLocation = locationFacadeREST.find(entity.getLocation().getLocationId());
+
+                Location existingLocation = LocationFacadeREST.getInstance().find(entity.getLocation().getLocationId());
                 if (existingLocation != null) {
                     entity.setLocation(existingLocation);
                 } else {
@@ -128,7 +136,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             }
 
             if (equipmentId != null) {
-                Equipment equipment = equipmentFacadeREST.findNative(equipmentId);
+                Equipment equipment = EquipmentFacadeREST.getInstance().findNative(equipmentId);
                 if (equipment != null) {
                     entity.setEquipment(equipment);
                     if(entity.getLocation() == null && equipment.getLocation() != null) {
@@ -142,16 +150,15 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             }
 
             if (entity.getQuickChoiceItem() != null) {
-                QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
-                QuickChoiceItem quickChoiceItem = quickChoiceItemFacadeREST.find(entity.getQuickChoiceItem().getQuickChoiceItemId());
+                QuickChoiceItem quickChoiceItem = QuickChoiceItemFacadeREST.getInstance().find(entity.getQuickChoiceItem().getQuickChoiceItemId());
                 if (quickChoiceItem != null) {
                     entity.setQuickChoiceItem(quickChoiceItem);
                     entity.setDeviation(quickChoiceItem.getDeviationGrade());
                 }
             }
 
-            ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-            Project project = projectFacadeREST.find(projectId);
+
+            Project project = ProjectFacadeREST.getInstance().find(projectId);
             if(project != null) {
                 entity.setProject(project);
             } else {
@@ -177,7 +184,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                         measurementLanguage.setMeasurement(measurement);
                     }
                     // Check if measurement already exists
-                    Measurement existing = measurementFacadeREST.find(measurement.getMeasurementId());
+                    Measurement existing = MeasurementFacadeREST.getInstance().find(measurement.getMeasurementId());
                     if (existing == null) {
                         entity.getMeasurementList().add(measurement);
                         edit(entity);
@@ -215,51 +222,9 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
 
         createWithProject2(projectId, observation);
 
-        ImageFacadeREST imageFacadeREST = new ImageFacadeREST();
-        imageFacadeREST.createWithObservation(observation.getObservationId(), media);
-    }
 
-//    private void createNative(Observation observation) {
-//        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-//        EntityTransaction tx = em.getTransaction();
-//        try {
-//            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_project \n " +
-//                    " WHERE company_company_id = ?1 AND project_project_id = ?2")
-//                    .setParameter(1, companyId)
-//                    .setParameter(2, entity.getProjectId());
-//
-//            Number counter = (Number) query.getSingleResult();
-//            if(counter.intValue() == 0) {
-//                tx.begin();
-//                final int i = em.createNativeQuery(
-//                        "INSERT INTO observation (" +
-//                                "observation_id, " +    // 1
-//                                "project," +            // 2
-//                                "description," +        // 3
-//                                "equipment," +          // 4
-//                                "created_date," +       // 5
-//                                "modified_date," +      // 6
-//                                "created_user," +       // 7
-//                                "modified_user," +
-//                                "deviation," +
-//                                "quick_choice_item," +
-//                                "action," +
-//                                "location)\n" +
-//                                "VALUES (?1, ?2);"
-//                ).setParameter(1, companyId)
-//                        .setParameter(2, entity.getProjectId())
-//                        .executeUpdate();
-//                tx.commit();
-//            } else {
-//                //System.out.println("No problem: company_has_project already exists");
-//            }
-//        } catch (Exception exp) {
-//            tx.rollback();
-//            System.out.println("Exception while inserting into company_has_project: " + exp.getMessage());
-//        } finally {
-//            em.close();
-//        }
-//    }
+        ImageFacadeREST.getInstance().createWithObservation(observation.getObservationId(), media);
+    }
 
     @PUT
     @Deprecated
@@ -268,12 +233,11 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     public void editLocation(@PathParam("locationId") String locationId,
                              Observation entity) {
 
-        LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
         Observation observation = this.findNative(entity.getObservationId());
         if (observation == null) {
             //System.out.println("observation id missing = " + entity.getObservationId());
         } else {
-            Location location = locationFacadeREST.find(locationId);
+            Location location = LocationFacadeREST.getInstance().find(locationId);
             if (location != null) {
                 observation.setLocation(location);
                 if (entity.getModifiedDate() != null) {
@@ -298,10 +262,6 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                             @PathParam("quickChoiceItemId") String quickChoiceItemId,
                             @PathParam("equipmentId") String equipmentId,
                             Observation entity) {
-        LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
-        System.out.println("Lagrer observasjon ID: " + entity.getObservationId());
-        QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
-        EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
 
         Observation observation = this.find(id);
         if (observation != null) {
@@ -331,13 +291,13 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 observation.setModifiedDate(new Date());
             }
             if (!quickChoiceItemId.isEmpty()) {
-                QuickChoiceItem quickChoiceItem = quickChoiceItemFacadeREST.find(quickChoiceItemId);
+                QuickChoiceItem quickChoiceItem = QuickChoiceItemFacadeREST.getInstance().find(quickChoiceItemId);
                 if (quickChoiceItem != null) {
                     observation.setQuickChoiceItem(quickChoiceItem);
                 }
             }
             if (!equipmentId.isEmpty()) {
-                Equipment equipment = equipmentFacadeREST.find(equipmentId);
+                Equipment equipment = EquipmentFacadeREST.getInstance().find(equipmentId);
                 if (equipment != null) {
                     observation.setEquipment(equipment);
                 } else {
@@ -347,7 +307,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 }
             }
             if (!locationId.isEmpty()) {
-                Location location = locationFacadeREST.find(locationId);
+                Location location = LocationFacadeREST.getInstance().find(locationId);
                 if (location != null) {
                     observation.setLocation(location);
                     if (!location.getObservationList().contains(observation)) {
@@ -372,32 +332,41 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
 //    @Path("linkMeasurement/{companyId}")
 //    @Consumes({MediaType.APPLICATION_JSON})
     public void linkMeasurement(String measurementId, Observation entity) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM observation_has_measurement \n " +
-                            " WHERE observation_observation_id = ?1 AND measurement_measurement_id = ?2")
-                    .setParameter(1, entity.getObservationId())
-                    .setParameter(2, measurementId);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            EntityTransaction tx = em.getTransaction();
+            try {
+                Query query = em.createNativeQuery("""
+                                SELECT COUNT(*) FROM observation_has_measurement 
+                                WHERE observation_observation_id = ?1 AND measurement_measurement_id = ?2
+                                """)
+                        .setParameter(1, entity.getObservationId())
+                        .setParameter(2, measurementId);
 
-            Number counter = (Number) query.getSingleResult();
-            if (counter.intValue() == 0) {
-                tx.begin();
-                final int i = em.createNativeQuery(
-                                "INSERT INTO observation_has_measurement (observation_observation_id, measurement_measurement_id)\n" +
-                                        "VALUES (?, ?);"
-                        ).setParameter(1, entity.getObservationId())
-                        .setParameter(2, measurementId)
-                        .executeUpdate();
-                tx.commit();
-            } else {
-                //System.out.println("No problem: observation_has_measurement already exists");
+                Number counter = (Number) query.getSingleResult();
+                if (counter.intValue() == 0) {
+                    tx.begin();
+                    final int i = em.createNativeQuery("""
+                                    INSERT INTO observation_has_measurement (observation_observation_id, measurement_measurement_id)
+                                    VALUES (?, ?);
+                                    """)
+                            .setParameter(1, entity.getObservationId())
+                            .setParameter(2, measurementId)
+                            .executeUpdate();
+                    tx.commit();
+                }
+            } catch (Exception exp) {
+                if (tx.isActive()) {
+                    tx.rollback();
+                }
+                System.out.println("Exception while inserting into observation_has_measurement for observationId: " +
+                        entity.getObservationId() + ", measurementId: " + measurementId + " - " + exp.getMessage());
+                exp.printStackTrace(System.err);
+                throw new RuntimeException("Failed to link measurement to observation", exp);
             }
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("Exception while inserting into observation_has_measurement: " + exp.getMessage());
-        } finally {
-            em.close();
+        } catch (Exception e) {
+            System.out.println("Exception while creating EntityManager for linkMeasurement: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to initialize EntityManager", e);
         }
     }
 
@@ -411,10 +380,6 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                      Observation entity) {
         DateTime start = new DateTime(new Date());
 
-        LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
-        QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
-        EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
 
         Observation observation = this.find(id);
         if (observation != null) {
@@ -455,24 +420,24 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 observation.setModifiedDate(new Date());
             }
             if(entity.getOldProjectId() != null) {
-                Project oldProject = projectFacadeREST.findNative(entity.getOldProjectId());
+                Project oldProject = ProjectFacadeREST.getInstance().findNative(entity.getOldProjectId());
                 observation.setOldProject(oldProject);
             }
             if (!quickChoiceItemId.isEmpty()) {
-                QuickChoiceItem quickChoiceItem = quickChoiceItemFacadeREST.find(quickChoiceItemId);
+                QuickChoiceItem quickChoiceItem = QuickChoiceItemFacadeREST.getInstance().find(quickChoiceItemId);
                 if (quickChoiceItem != null) {
                     observation.setQuickChoiceItem(quickChoiceItem);
                 }
             }
 
             if (!locationId.isEmpty()) {
-                Location location = locationFacadeREST.find(locationId);
+                Location location = LocationFacadeREST.getInstance().find(locationId);
                 if (location != null) {
                     observation.setLocation(location);
                 }
             }
             if (!equipmentId.isEmpty()) {
-                Equipment equipment = equipmentFacadeREST.find(equipmentId);
+                Equipment equipment = EquipmentFacadeREST.getInstance().find(equipmentId);
                 if (equipment != null) {
                     observation.setEquipment(equipment);
                     if(observation.getLocation() == null && equipment.getLocation() != null) {
@@ -488,13 +453,12 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 // Add/update the measurements
                 List<Measurement> measurements = new ArrayList<>(entity.getMeasurementList());
                 for (Measurement measurement : measurements) {
-                    MeasurementFacadeREST measurementFacadeREST = new MeasurementFacadeREST();
-                    final Measurement existingMeasurement = measurementFacadeREST.find(measurement.getMeasurementId());
+                    final Measurement existingMeasurement = MeasurementFacadeREST.getInstance().find(measurement.getMeasurementId());
                     if (existingMeasurement != null) {
-                        measurementFacadeREST.editMeasurementOnly(measurement.getMeasurementId(), measurement);
+                        MeasurementFacadeREST.getInstance().editMeasurementOnly(measurement.getMeasurementId(), measurement);
                         linkMeasurement(measurement.getMeasurementId(), observation);
                     } else {
-                        measurementFacadeREST.createWithObservation(observation.getObservationId(), measurement);
+                        MeasurementFacadeREST.getInstance().createWithObservation(observation.getObservationId(), measurement);
                         //linkMeasurement(measurement.getMeasurementId(),observation);
 //                    if (!observation.getMeasurementList().contains(measurement)) {
 //                        observation.getMeasurementList().add(measurement);
@@ -536,10 +500,6 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                         @PathParam("quickChoiceItemId") String quickChoiceItemId,
                         @PathParam("equipmentId") String equipmentId,
                         Observation entity) {
-        LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
-        QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
-        EquipmentFacadeREST equipmentFacadeREST = new EquipmentFacadeREST();
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
 
         Observation observation = this.find(id);
         if (observation != null) {
@@ -551,10 +511,9 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
 
             List<Measurement> measurements = new ArrayList<>(entity.getMeasurementList());
             for (Measurement measurement : measurements) {
-                MeasurementFacadeREST measurementFacadeREST = new MeasurementFacadeREST();
-                final Measurement existingMeasurement = measurementFacadeREST.find(measurement.getMeasurementId());
+                final Measurement existingMeasurement = MeasurementFacadeREST.getInstance().find(measurement.getMeasurementId());
                 if (existingMeasurement != null) {
-                    measurementFacadeREST.editMeasurementOnly(measurement.getMeasurementId(), measurement);
+                    MeasurementFacadeREST.getInstance().editMeasurementOnly(measurement.getMeasurementId(), measurement);
                     if (!existingMeasurement.getObservationList().contains(observation)) {
                         existingMeasurement.getObservationList().add(observation);
                     }
@@ -587,18 +546,18 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             observation.setPerformingDate(entity.getPerformingDate());
             observation.setAlternativeLocation(entity.getAlternativeLocation());
             if(entity.getOldProjectId() != null) {
-                Project oldProject = projectFacadeREST.findNative(entity.getOldProjectId());
+                Project oldProject = ProjectFacadeREST.getInstance().findNative(entity.getOldProjectId());
                 observation.setOldProject(oldProject);
             }
 
             if (!quickChoiceItemId.isEmpty()) {
-                QuickChoiceItem quickChoiceItem = quickChoiceItemFacadeREST.find(quickChoiceItemId);
+                QuickChoiceItem quickChoiceItem = QuickChoiceItemFacadeREST.getInstance().find(quickChoiceItemId);
                 if (quickChoiceItem != null) {
                     observation.setQuickChoiceItem(quickChoiceItem);
                 }
             }
             if (!equipmentId.isEmpty()) {
-                Equipment equipment = equipmentFacadeREST.find(equipmentId);
+                Equipment equipment = EquipmentFacadeREST.getInstance().find(equipmentId);
                 if (equipment != null) {
                     observation.setEquipment(equipment);
                     /*if (!equipment.getObservationList().contains(equipment)) {
@@ -611,7 +570,7 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                 }
             }
             if (!locationId.isEmpty()) {
-                Location location = locationFacadeREST.find(locationId);
+                Location location = LocationFacadeREST.getInstance().find(locationId);
                 if (location != null) {
                     observation.setLocation(location);
                     if (!location.getObservationList().contains(observation)) {
@@ -644,13 +603,13 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("linkUser/{userId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToUser(@PathParam("userId") String userId, Observation entity) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
+
         Observation observation = this.find(entity.getObservationId());
-        User user = userFacadeREST.find(userId);
+        User user = UserFacadeREST.getInstance().find(userId);
         if (user != null && observation != null) {
             if (!user.getObservationList().contains(observation)) {
                 user.getObservationList().add(observation);
-                userFacadeREST.edit(user);
+                UserFacadeREST.getInstance().edit(user);
             }
             if (!observation.getUserList().contains(user)) {
                 observation.getUserList().add(user);
@@ -663,13 +622,12 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("linkUser2/{userId}/{observationId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToUser2(@PathParam("userId") String userId, @PathParam("observationId") String observationId) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
         Observation observation = this.find(observationId);
-        User user = userFacadeREST.find(userId);
+        User user = UserFacadeREST.getInstance().find(userId);
         if (user != null && observation != null) {
             if (!user.getObservationList().contains(observation)) {
                 user.getObservationList().add(observation);
-                userFacadeREST.edit(user);
+                UserFacadeREST.getInstance().edit(user);
             }
             if (!observation.getUserList().contains(user)) {
                 observation.getUserList().add(user);
@@ -682,13 +640,12 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("unlinkUser/{userId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void unlinkToUser(@PathParam("userId") String userId, Observation entity) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
         Observation observation = this.find(entity.getObservationId());
-        User user = userFacadeREST.find(userId);
+        User user = UserFacadeREST.getInstance().find(userId);
         if (user != null && observation != null) {
             if (user.getObservationList().contains(observation)) {
                 user.getObservationList().remove(observation);
-                userFacadeREST.edit(user);
+                UserFacadeREST.getInstance().edit(user);
             }
             if (observation.getUserList().contains(user)) {
                 observation.getUserList().remove(user);
@@ -719,70 +676,77 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     }
 
     public Observation findNative(String id) {
-        Observation observation = null;
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation o\n"
-                                + "WHERE o.observation_id = ?1",
-                        Observation.class)
-                .setParameter(1, id)
-                .getResultList();
-
-        if (!resultList.isEmpty()) {
-            observation = resultList.get(0);
-            List<Media> mediaList = (List<Media>) em.createNativeQuery("SELECT "
-                                    + "* FROM image img\n"
-                                    + "JOIN observation_has_image ohi on ohi.image = img.image_id\n"
-                                    + "WHERE ohi.observation = ?1",
-                            Media.class)
-                    .setParameter(1, observation.getObservationId())
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                            SELECT * FROM observation o
+                            WHERE o.observation_id = ?1
+                            """,
+                            Observation.class)
+                    .setParameter(1, id)
                     .getResultList();
 
-            List<Measurement> measurementList = (List<Measurement>) em.createNativeQuery("SELECT "
-                                    + "* FROM measurement meas\n"
-                                    + "JOIN observation_has_measurement ohm on ohm.measurement_measurement_id = meas.measurement_id\n"
-                                    + "WHERE ohm.observation_observation_id = ?1",
-                            Measurement.class)
-                    .setParameter(1, observation.getObservationId())
-                    .getResultList();
-            observation.setImageList(mediaList);
-            observation.setMeasurementList(measurementList);
-            em.close();
+            if (!resultList.isEmpty()) {
+                Observation observation = resultList.get(0);
 
-            observation.setProjectNumber(observation.getProject().getProjectNumber());
-            if(observation.getEquipment() != null) {
-                observation.setEquipmentString(observation.getEquipment().getFullName());
-                observation.setEquipmentTagId(observation.getEquipment().getTagId());
-                observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+                List<Media> mediaList = (List<Media>) em.createNativeQuery("""
+                                SELECT * FROM image img
+                                JOIN observation_has_image ohi ON ohi.image = img.image_id
+                                WHERE ohi.observation = ?1
+                                """,
+                                Media.class)
+                        .setParameter(1, observation.getObservationId())
+                        .getResultList();
+
+                List<Measurement> measurementList = (List<Measurement>) em.createNativeQuery("""
+                                SELECT * FROM measurement meas
+                                JOIN observation_has_measurement ohm ON ohm.measurement_measurement_id = meas.measurement_id
+                                WHERE ohm.observation_observation_id = ?1
+                                """,
+                                Measurement.class)
+                        .setParameter(1, observation.getObservationId())
+                        .getResultList();
+
+                observation.setImageList(mediaList);
+                observation.setMeasurementList(measurementList);
+
+                observation.setProjectNumber(observation.getProject().getProjectNumber());
+                if (observation.getEquipment() != null) {
+                    observation.setEquipmentString(observation.getEquipment().getFullName());
+                    observation.setEquipmentTagId(observation.getEquipment().getTagId());
+                    observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+                }
+                if (observation.getLocation() != null) {
+                    observation.setLocationString(observation.getLocation().getFullName());
+                    observation.setLocationId(observation.getLocation().getLocationId());
+                }
+                if (observation.getOldProject() != null) {
+                    observation.setOldProjectId(observation.getOldProject().getProjectId());
+                    observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+                    observation.setOldProject(null);
+                }
+                return observation;
             }
-            if(observation.getLocation() != null) {
-                observation.setLocationString(observation.getLocation().getFullName());
-                observation.setLocationId(observation.getLocation().getLocationId());
-            }
-            if(observation.getOldProject() != null) {
-                observation.setOldProjectId(observation.getOldProject().getProjectId());
-                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
-                observation.setOldProject(null);
-            }
-            return observation;
+            return null;
+        } catch (Exception e) {
+            System.out.println("Exception while finding observation by id: " + id + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find observation", e);
         }
-        em.close();
-        return observation;
     }
 
-    @GET
-    @Override
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<Observation> findAll() {
-        return super.findAll();
-    }
-
-    @GET
-    @Path("{from}/{to}")
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<Observation> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
-        return super.findRange(new int[]{from, to});
-    }
+//    @GET
+//    @Override
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<Observation> findAll() {
+//        return super.findAll();
+//    }
+//
+//    @GET
+//    @Path("{from}/{to}")
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<Observation> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
+//        return super.findRange(new int[]{from, to});
+//    }
 
     @GET
     @Path("count")
@@ -796,6 +760,35 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("projectobservations/{projectid}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Observation> findProjectObservations(@PathParam("projectid") String projectId) {
+
+        return loadByProjectOptimized(projectId);
+//        List<Observation> observations = findProjectObservationsNative(projectId);
+//
+//        for (Observation observation : observations) {
+//            if (observation.getEquipment() != null) {
+//                observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+//            }
+//            if(observation.getOldProject() != null) {
+//                observation.setOldProjectId(observation.getOldProject().getProjectId());
+//                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+//                observation.setOldProject(null);
+//            }
+//            observation.setEquipmentId(null);
+//            if (observation.getOldProject() != null) {
+//                observation.setOldProjectId(observation.getOldProject().getProjectId());
+//                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+//            }
+//        }
+//
+//        return observations;
+    }
+
+    @Deprecated
+    @GET
+    @Path("projectobservations2/{projectid}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Observation> findProjectObservations2(@PathParam("projectid") String projectId) {
+
         List<Observation> observations = findProjectObservationsNative(projectId);
 
         for (Observation observation : observations) {
@@ -821,22 +814,28 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("loadTitleGroups/{projectId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<String> loadTitleGroups(@PathParam("projectId") String projectId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation o\n"
-                                + "WHERE o.project = ?1\n"
-                                + "GROUP BY o.title\n",
-                        Observation.class)
-                .setParameter(1, projectId)
-                .getResultList();
-        em.close();
-        List<String> groups = new ArrayList<>();
-        for(Observation observation: resultList) {
-            if(!observation.getTitle().isEmpty()) {
-                groups.add(observation.getTitle());
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                            SELECT * FROM observation o
+                            WHERE o.project = ?1
+                            GROUP BY o.title
+                            """,
+                            Observation.class)
+                    .setParameter(1, projectId)
+                    .getResultList();
+
+            List<String> groups = new ArrayList<>();
+            for (Observation observation : resultList) {
+                if (!observation.getTitle().isEmpty()) {
+                    groups.add(observation.getTitle());
+                }
             }
+            return groups;
+        } catch (Exception e) {
+            System.out.println("Exception while loading title groups for projectId: " + projectId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load title groups", e);
         }
-        return groups;
     }
 
 
@@ -949,6 +948,21 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             observation.setNumberString(observationNo);
             observation.setProjectNumber(observation.getProject().getProjectNumber());
         }
+        if(observation.getOldProject() != null) {
+            observation.setOldProjectId(observation.getOldProject().getProjectId());
+            observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+            observation.setOldProject(null);
+//            if(observation.getOldProject().getAsset() != null) {
+//                observation.getOldProject().assetId = observation.getOldProject().getAsset().getAssetId();
+//                observation.getOldProject().setAsset(null);
+//            }
+//            if(observation.getOldProject().getDisipline() != null) {
+//                observation.getOldProject().disiplineId = observation.getOldProject().getDisipline().getDisiplineId();
+//                observation.getOldProject().setDisipline(null);
+//            }
+
+        }
+
         return observation;
     }
 
@@ -990,30 +1004,43 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Produces({MediaType.APPLICATION_JSON})
     public List<Observation> loadObservationsForCompany(@PathParam("companyId") String companyId,
                                                         @PathParam("stateString") String stateString, List<Integer> tgs) {
-        Integer state = Integer.parseInt(stateString);
-        String tgsString = "(";
-        for (Integer tg : tgs) {
-            tgsString += Integer.toString(tg) + ",";
-        }
-        tgsString = tgsString.substring(0, tgsString.length() - 1);
-        tgsString += ")";
+        try {
+            Integer state = Integer.parseInt(stateString);
+            String tgsString = "(";
+            for (Integer tg : tgs) {
+                tgsString += Integer.toString(tg) + ",";
+            }
+            tgsString = tgsString.substring(0, tgsString.length() - 1);
+            tgsString += ")";
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation obs\n"
-                                + "join project p on p.project_id = obs.project\n"
-                                + "join company_has_project chp on chp.project_project_id = p.project_id\n"
-                                + "where obs.deleted = 0 and chp.company_company_id = ?1 and observation_state <= ?2 and deviation in " + tgsString + "\n"
-                                + "LIMIT 0,50",
-                        Observation.class)
-                .setParameter(1, companyId)
-                .setParameter(2, state)
-                .getResultList();
-        em.close();
-        for (Observation observation : resultList) {
-            observation.setProjectId(observation.getProject().getProjectId());
+            try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+                List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                                SELECT * FROM observation obs
+                                JOIN project p ON p.project_id = obs.project
+                                JOIN company_has_project chp ON chp.project_project_id = p.project_id
+                                WHERE obs.deleted = 0 AND chp.company_company_id = ?1 AND observation_state <= ?2 AND deviation IN
+                                """ + tgsString + """ 
+                                LIMIT 0,50
+                                """,
+                                Observation.class)
+                        .setParameter(1, companyId)
+                        .setParameter(2, state)
+                        .getResultList();
+
+                for (Observation observation : resultList) {
+                    observation.setProjectId(observation.getProject().getProjectId());
+                }
+                return resultList;
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid state string for companyId: " + companyId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Invalid state parameter", e);
+        } catch (Exception e) {
+            System.out.println("Exception while loading observations for companyId: " + companyId + ", state: " + stateString + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load observations for company", e);
         }
-        return resultList;
     }
 
     @GET
@@ -1021,49 +1048,56 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Produces({MediaType.APPLICATION_JSON})
     public List<Observation> loadByEquipmentWithProject(@PathParam("equipmentId") String equipmentId,
                                                         @PathParam("projectId") String projectId) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                            SELECT * FROM observation obs
+                            WHERE obs.deleted = 0 AND obs.equipment = ?1 AND obs.project = ?2
+                            ORDER BY obs.created_date DESC
+                            """,
+                            Observation.class)
+                    .setParameter(1, equipmentId)
+                    .setParameter(2, projectId)
+                    .getResultList();
 
-
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation obs\n"
-                                + "where obs.deleted = 0 and obs.equipment = ?1 and obs.project = ?2 " + "\n"
-                                + "order by obs.created_date DESC\n",
-                        Observation.class)
-                .setParameter(1, equipmentId)
-                .setParameter(2, projectId)
-                .getResultList();
-        em.close();
-        for (Observation observation : resultList) {
-            optimizeObservation(observation);
-            //observation.setProjectId(observation.getProject().getProjectId());
+            for (Observation observation : resultList) {
+                optimizeObservation(observation);
+            }
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while loading observations for equipmentId: " + equipmentId +
+                    ", projectId: " + projectId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load observations by equipment and project", e);
         }
-        return resultList;
     }
 
     @GET
     @Path("loadByCheckListAnswerWithProject/{checkListAnswerId}/{projectId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Observation> loadByCheckListAnswerWithProject(@PathParam("checkListAnswerId") String checkListAnswerId,
-                                                        @PathParam("projectId") String projectId) {
+                                                              @PathParam("projectId") String projectId) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                            SELECT o.* FROM observation o
+                            JOIN iDocDatabase.answer_value av ON o.observation_id = av.observation
+                            JOIN check_list_answer cla ON av.check_list_answer = cla.check_list_answer_id
+                            WHERE o.project = ?1 AND cla.check_list_answer_id = ?2 AND o.deleted = 0
+                            """,
+                            Observation.class)
+                    .setParameter(1, projectId)
+                    .setParameter(2, checkListAnswerId)
+                    .getResultList();
 
-
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-        String sqlQuery = """
-                select o.* from observation o
-                    join iDocDatabase.answer_value av on o.observation_id = av.observation
-                    join check_list_answer cla on av.check_list_answer = cla.check_list_answer_id \n""";
-        sqlQuery +=  "where o.project = '" + projectId + "' and cla.check_list_answer_id = '" + checkListAnswerId +"' and o.deleted = 0";
-
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery(sqlQuery,
-                        Observation.class)
-                .getResultList();
-        em.close();
-        for (Observation observation : resultList) {
-            optimizeObservation(observation);
-            //observation.setProjectId(observation.getProject().getProjectId());
+            for (Observation observation : resultList) {
+                optimizeObservation(observation);
+            }
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while loading observations for checkListAnswerId: " + checkListAnswerId +
+                    ", projectId: " + projectId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load observations by checklist answer and project", e);
         }
-        return resultList;
     }
 
     @PUT
@@ -1074,35 +1108,51 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                                                         @PathParam("batchOffset") String batchOffsetString,
                                                         @PathParam("batchSize") String batchSizeString,
                                                         List<Integer> tgs) {
+        try {
+            Integer batchOffset = Integer.parseInt(batchOffsetString);
+            Integer batchSize = Integer.parseInt(batchSizeString);
+            Integer state = Integer.parseInt(stateString);
+            String tgsString = "(";
+            for (Integer tg : tgs) {
+                tgsString += Integer.toString(tg) + ",";
+            }
+            tgsString = tgsString.substring(0, tgsString.length() - 1);
+            tgsString += ")";
 
-        Integer batchOffset = Integer.parseInt(batchOffsetString);
-        Integer batchSize = Integer.parseInt(batchSizeString);
-        Integer state = Integer.parseInt(stateString);
-        String tgsString = "(";
-        for (Integer tg : tgs) {
-            tgsString += Integer.toString(tg) + ",";
-        }
-        tgsString = tgsString.substring(0, tgsString.length() - 1);
-        tgsString += ")";
+            try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+                List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                                SELECT * FROM observation obs
+                                JOIN project p ON p.project_id = obs.project
+                                JOIN company_has_project chp ON chp.project_project_id = p.project_id
+                                WHERE obs.deleted = 0 AND chp.company_company_id = ?1 AND obs.observation_state <= ?2 AND obs.deviation IN 
+                                """ + tgsString + """
+                                
+                                ORDER BY obs.created_date DESC
+                                LIMIT ?3, ?4
+                                """,
+                                Observation.class)
+                        .setParameter(1, companyId)
+                        .setParameter(2, state)
+                        .setParameter(3, batchOffset)
+                        .setParameter(4, batchSize)
+                        .getResultList();
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation obs\n"
-                                + "join project p on p.project_id = obs.project\n"
-                                + "join company_has_project chp on chp.project_project_id = p.project_id\n"
-                                + "where obs.deleted = 0 and chp.company_company_id = ?1 and obs.observation_state <= ?2 and obs.deviation in " + tgsString + "\n"
-                                + "order by obs.created_date DESC\n LIMIT ?3,?4",
-                        Observation.class)
-                .setParameter(1, companyId)
-                .setParameter(2, state)
-                .setParameter(3, batchOffset)
-                .setParameter(4, batchSize)
-                .getResultList();
-        em.close();
-        for (Observation observation : resultList) {
-            observation.setProjectId(observation.getProject().getProjectId());
+                for (Observation observation : resultList) {
+                    observation.setProjectId(observation.getProject().getProjectId());
+                }
+                return resultList;
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid numeric parameter for companyId: " + companyId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Invalid numeric parameter", e);
+        } catch (Exception e) {
+            System.out.println("Exception while loading observations for companyId: " + companyId +
+                    ", state: " + stateString + ", batchOffset: " + batchOffsetString +
+                    ", batchSize: " + batchSizeString + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load observations for company", e);
         }
-        return resultList;
     }
 
     @PUT
@@ -1116,42 +1166,57 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                                                                 @PathParam("toDate") String toDate,
                                                                 @PathParam("showOpenOnly") Boolean showOpenOnly,
                                                                 List<Integer> tgs) {
+        try {
+            Integer batchOffset = Integer.parseInt(batchOffsetString);
+            Integer batchSize = Integer.parseInt(batchSizeString);
+            Integer state = Integer.parseInt(stateString);
+            String tgsString = "(";
+            for (Integer tg : tgs) {
+                tgsString += Integer.toString(tg) + ",";
+            }
+            tgsString = tgsString.substring(0, tgsString.length() - 1);
+            tgsString += ")";
+            String showOpenOnlySql = "";
+            if (showOpenOnly) {
+                showOpenOnlySql = " AND p.project_state < 7 AND obs.observation_state <= " + state + " ";
+            }
 
-        Integer batchOffset = Integer.parseInt(batchOffsetString);
-        Integer batchSize = Integer.parseInt(batchSizeString);
-        Integer state = Integer.parseInt(stateString);
-        String tgsString = "(";
-        for (Integer tg : tgs) {
-            tgsString += Integer.toString(tg) + ",";
-        }
-        tgsString = tgsString.substring(0, tgsString.length() - 1);
-        tgsString += ")";
-        String showOpenOnlySql = "";
-        if (showOpenOnly) {
-            showOpenOnlySql = " AND p.project_state < 7 and obs.observation_state <= " + stateString + " ";
-        }
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation obs\n"
-                                + "join project p on p.project_id = obs.project\n"
-                                + "join company_has_project chp on chp.project_project_id = p.project_id\n"
-                                + "where obs.deleted = 0 AND p.deleted = 0 and chp.company_company_id = ?1 and obs.deviation in " + tgsString + " AND\n"
-                                + "   obs.created_date > ?5 AND "
-                                + "   obs.created_date < ?6 " + showOpenOnlySql + " "
-                                + "order by obs.created_date DESC\n LIMIT ?3,?4",
-                        Observation.class)
-                .setParameter(1, companyId)
-                .setParameter(3, batchOffset)
-                .setParameter(4, batchSize)
-                .setParameter(5, fromDate)
-                .setParameter(6, toDate)
-                .getResultList();
-        em.close();
-        for (Observation observation : resultList) {
-            observation.setProjectId(observation.getProject().getProjectId());
-        }
-        return resultList;
+            try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+                List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                                SELECT * FROM observation obs
+                                JOIN project p ON p.project_id = obs.project
+                                JOIN company_has_project chp ON chp.project_project_id = p.project_id
+                                WHERE obs.deleted = 0 AND p.deleted = 0 AND chp.company_company_id = ?1 AND obs.deviation IN 
+                                """ + tgsString + """
+                                 AND obs.created_date > ?5 AND obs.created_date < ?6
+                                """ + showOpenOnlySql + """
+                                
+                                ORDER BY obs.created_date DESC
+                                LIMIT ?3, ?4
+                                """,
+                                Observation.class)
+                        .setParameter(1, companyId)
+                        .setParameter(3, batchOffset)
+                        .setParameter(4, batchSize)
+                        .setParameter(5, fromDate)
+                        .setParameter(6, toDate)
+                        .getResultList();
 
+                for (Observation observation : resultList) {
+                    observation.setProjectId(observation.getProject().getProjectId());
+                }
+                return resultList;
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid numeric parameter for companyId: " + companyId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Invalid numeric parameter", e);
+        } catch (Exception e) {
+            System.out.println("Exception while loading observations in period for companyId: " + companyId +
+                    ", state: " + stateString + ", fromDate: " + fromDate + ", toDate: " + toDate + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load observations for company in period", e);
+        }
     }
 
     @PUT
@@ -1161,162 +1226,220 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
                                                       @PathParam("batchOffset") String strBatchOffset,
                                                       @PathParam("batchSize") String strBatchSize,
                                                       List<Integer> states) {
-        int batchOffset = Integer.parseInt(strBatchOffset);
-        int batchSize = Integer.parseInt(strBatchSize);
-        String stateString = "(";
-        for (Integer state : states) {
-            stateString += Integer.toString(state) + ",";
-        }
-        stateString = stateString.substring(0, stateString.length() - 1);
-        stateString += ")";
+        try {
+            int batchOffset = Integer.parseInt(strBatchOffset);
+            int batchSize = Integer.parseInt(strBatchSize);
+            String stateString = "(";
+            for (Integer state : states) {
+                stateString += Integer.toString(state) + ",";
+            }
+            stateString = stateString.substring(0, stateString.length() - 1);
+            stateString += ")";
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation obs\n"
-                                + "join project p on p.project_id = obs.project\n"
-                                + "join asset a on a.asset_id = p.asset\n"
-                                + "where obs.deleted = 0 and a.asset_id = ?1 and p.project_state in " + stateString + "\n"
-                                + "order by obs.created_date DESC\n LIMIT ?2,?3",
-                        Observation.class)
-                .setParameter(1, assetId)
-                .setParameter(2, batchOffset)
-                .setParameter(3, batchSize)
-                .getResultList();
-        em.close();
-        for(Observation observation: resultList) {
-            if(observation.getEquipment() != null) {
-                observation.setEquipmentId(observation.getEquipment().getEquipmentId());
-                observation.setEquipmentString(observation.getEquipment().getFullName());
-                if(observation.getEquipment().getTagId() != null) {
-                    observation.setEquipmentTagId(observation.getEquipment().getTagId());
+            try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+                List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                                SELECT * FROM observation obs
+                                JOIN project p ON p.project_id = obs.project
+                                JOIN asset a ON a.asset_id = p.asset
+                                WHERE obs.deleted = 0 AND a.asset_id = ?1 AND p.project_state IN 
+                                """ + stateString + """
+                                
+                                ORDER BY obs.created_date DESC
+                                LIMIT ?2, ?3
+                                """,
+                                Observation.class)
+                        .setParameter(1, assetId)
+                        .setParameter(2, batchOffset)
+                        .setParameter(3, batchSize)
+                        .getResultList();
+
+                for (Observation observation : resultList) {
+                    if (observation.getEquipment() != null) {
+                        observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+                        observation.setEquipmentString(observation.getEquipment().getFullName());
+                        if (observation.getEquipment().getTagId() != null) {
+                            observation.setEquipmentTagId(observation.getEquipment().getTagId());
+                        }
+                        observation.setEquipment(null);
+                    }
+                    if (observation.getLocation() != null) {
+                        observation.setLocationId(observation.getLocation().getLocationId());
+                        observation.setLocationString(observation.getLocation().getFullName());
+                        observation.setLocation(null);
+                    }
+                    if (observation.getProject() != null) {
+                        observation.setProjectNumber(observation.getProject().getProjectNumber());
+                    }
+                    if (observation.getQuickChoiceItem() != null) {
+                        observation.setQuickChoiceItem(null);
+                    }
+                    if (!observation.getMeasurementList().isEmpty()) {
+                        List<Measurement> statusMeasurements = observation.getMeasurementList().stream()
+                                .filter(r -> r.getName().equalsIgnoreCase("Status"))
+                                .collect(Collectors.toList());
+                        if (!statusMeasurements.isEmpty()) {
+                            observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
+                            observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
+                        }
+                    }
+                    observation.setProject(null);
+                    observation.setQuickChoiceItem(null);
+                    observation.setEquipment(null);
+                    observation.setLocation(null);
+                    observation.getMeasurementList().clear();
                 }
-                observation.setEquipment(null);
+                return resultList;
             }
-            if(observation.getLocation() != null) {
-                observation.setLocationId(observation.getLocation().getLocationId());
-                observation.setLocationString(observation.getLocation().getFullName());
-                observation.setLocation(null);
-            }
-            if(observation.getProject() != null) {
-                observation.setProjectNumber(observation.getProject().getProjectNumber());
-            }
-            if(observation.getQuickChoiceItem() != null) {
-                observation.setQuickChoiceItem(null);
-            }
-            if(!observation.getMeasurementList().isEmpty()) {
-                List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
-                if(!statusMeasurements.isEmpty()) {
-                    observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
-                    observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
-                }
-            }
-            observation.setProject(null);
-            observation.setQuickChoiceItem(null);
-            observation.setEquipment(null);
-            observation.setLocation(null);
-            observation.getMeasurementList().clear();
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid numeric parameter for assetId: " + assetId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Invalid numeric parameter", e);
+        } catch (Exception e) {
+            System.out.println("Exception while loading observations for assetId: " + assetId +
+                    ", batchOffset: " + strBatchOffset + ", batchSize: " + strBatchSize + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load observations for asset", e);
         }
-        return resultList;
     }
 
     public List<Observation> findProjectObservationsForCompanyNative(String projectId, String companyId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation o\n"
-                                + "JOIN observation_has_user ohu on observation_id = ohu.observation_observation_id\n"
-                                + "JOIN user u on ohu.user_user_id = u.user_id\n"
-                                + "JOIN company_has_user chu on u.user_id = chu.user\n"
-                                + "JOIN company c on chu.company = c.company_id\n"
-                                + "WHERE o.project = ?1 and c.company_id = ?2",
-                        Observation.class)
-                .setParameter(1, projectId)
-                .setParameter(2, companyId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                            SELECT * FROM observation o
+                            JOIN observation_has_user ohu ON observation_id = ohu.observation_observation_id
+                            JOIN user u ON ohu.user_user_id = u.user_id
+                            JOIN company_has_user chu ON u.user_id = chu.user
+                            JOIN company c ON chu.company = c.company_id
+                            WHERE o.project = ?1 AND c.company_id = ?2
+                            """,
+                            Observation.class)
+                    .setParameter(1, projectId)
+                    .setParameter(2, companyId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while finding project observations for projectId: " + projectId +
+                    ", companyId: " + companyId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find project observations for company", e);
+        }
     }
 
     @GET
     @Path("findProjectObservationsForUser/{projectId}/{userId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Observation> findProjectObservationsForUser(@PathParam("projectId") String projectId, @PathParam("userId") String userId) {
+        try {
+            List<Observation> resultList;
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation o\n"
-                                + "JOIN observation_has_user ohu on observation_id = ohu.observation_observation_id\n"
-                                + "JOIN user u on ohu.user_user_id = u.user_id\n"
-                                + "WHERE o.project = ?1 and u.user_id = ?2",
-                        Observation.class)
-                .setParameter(1, projectId)
-                .setParameter(2, userId)
-                .getResultList();
-        em.close();
+            try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+                resultList = (List<Observation>) em.createNativeQuery("""
+                                SELECT * FROM observation o
+                                JOIN observation_has_user ohu ON observation_id = ohu.observation_observation_id
+                                JOIN user u ON ohu.user_user_id = u.user_id
+                                WHERE o.project = ?1 AND u.user_id = ?2
+                                """,
+                                Observation.class)
+                        .setParameter(1, projectId)
+                        .setParameter(2, userId)
+                        .getResultList();
+            }
 
-        UserRoleFacadeREST userRoleFacadeREST = new UserRoleFacadeREST();
-        List<UserRole> userRoles = userRoleFacadeREST.loadByProject(projectId, userId);
-        if (!userRoles.isEmpty()) {
-            UserRole userRole = userRoles.get(0);
-            if (userRole.getRole().getRoleType().contains("_RESTRICTED")) {
-                if (userRole.getParameter() != null) {
-                    if (!userRole.getParameter().isEmpty()) {
-                        List<Observation> observations = findProjectObservations(projectId);
-                        UserRoleParameter userRoleParameter = UserRoleParameter.fromJsonString(userRole.getParameter());
-                        List<Observation> filtered = observations
-                                .stream().filter(r -> userRoleParameter.tgList.contains(r.getDeviation())).collect(Collectors.toList());
-                        for (Observation observation : filtered) {
-                            if (!resultList.contains(observation)) {
-                                resultList.add(observation);
+
+            List<UserRole> userRoles = UserRoleFacadeREST.getInstance().loadByProject(projectId, userId);
+            if (!userRoles.isEmpty()) {
+                UserRole userRole = userRoles.get(0);
+                if (userRole.getRole().getRoleType().contains("_RESTRICTED")) {
+                    if (userRole.getParameter() != null) {
+                        if (!userRole.getParameter().isEmpty()) {
+                            List<Observation> observations = findProjectObservations(projectId);
+                            UserRoleParameter userRoleParameter = UserRoleParameter.fromJsonString(userRole.getParameter());
+                            List<Observation> filtered = observations
+                                    .stream()
+                                    .filter(r -> userRoleParameter.tgList.contains(r.getDeviation()))
+                                    .collect(Collectors.toList());
+                            for (Observation observation : filtered) {
+                                if (!resultList.contains(observation)) {
+                                    resultList.add(observation);
+                                }
                             }
                         }
                     }
                 }
             }
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while finding project observations for user, projectId: " + projectId +
+                    ", userId: " + userId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find project observations for user", e);
         }
-        return resultList;
     }
 
     public List<Observation> findProjectObservationsNative(String projectId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation o\n"
-                                + "WHERE o.project = ?1 OR o.old_project = ?1",
-                        Observation.class)
-                .setParameter(1, projectId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Observation> resultList = em.createQuery("""
+                            SELECT o FROM Observation o
+                            LEFT JOIN FETCH o.location
+                            LEFT JOIN FETCH o.equipment
+                            LEFT JOIN FETCH o.project
+                            WHERE o.project.projectId = :projectId OR o.oldProject.projectId = :projectId
+                            """,
+                            Observation.class)
+                    .setParameter("projectId", projectId)
+                    .getResultList();
+
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while finding project observations for projectId: " + projectId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find project observations", e);
+        }
     }
 
     public Integer countProjectObservationsNative(String projectId, List<Integer> tgs) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        // find projectUserRole
-        String tgsString = "(";
-        for (Integer tg : tgs) {
-            tgsString += Integer.toString(tg) + ",";
-        }
-        tgsString = tgsString.substring(0, tgsString.length() - 1);
-        tgsString += ")";
-        Long counter = (Long) em.createNativeQuery("SELECT "
-                        + "count(o.observation_id) FROM observation o\n"
-                        + "WHERE (o.project = ?1 or o.old_project = ?1) AND o.deviation IN " + tgsString + " AND o.deleted = 0")
-                .setParameter(1, projectId)
-                .getSingleResult();
+        try {
+            String tgsString = "(";
+            for (Integer tg : tgs) {
+                tgsString += Integer.toString(tg) + ",";
+            }
+            tgsString = tgsString.substring(0, tgsString.length() - 1);
+            tgsString += ")";
 
-        em.close();
-        return counter.intValue();
+            try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+                Long counter = (Long) em.createNativeQuery("""
+                                SELECT COUNT(o.observation_id) FROM observation o
+                                WHERE (o.project = ?1 OR o.old_project = ?1) AND o.deviation IN 
+                                """ + tgsString + """
+                                 AND o.deleted = 0
+                                """)
+                        .setParameter(1, projectId)
+                        .getSingleResult();
+
+                return counter.intValue();
+            }
+        } catch (Exception e) {
+            System.out.println("Exception while counting project observations for projectId: " + projectId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to count project observations", e);
+        }
     }
 
     public List<Observation> findEquipmentObservationsNative(String equipmentId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation o\n"
-                                + "WHERE o.equipment = ?1",
-                        Observation.class)
-                .setParameter(1, equipmentId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                            SELECT * FROM observation o
+                            WHERE o.equipment = ?1
+                            """,
+                            Observation.class)
+                    .setParameter(1, equipmentId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while finding equipment observations for equipmentId: " + equipmentId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find equipment observations", e);
+        }
     }
 
 
@@ -1324,15 +1447,21 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("findProjectObservations/{projectid}/{from}/{to}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Observation> findProjectObservations(@PathParam("projectid") String projectId, @PathParam("from") Integer from, @PathParam("to") Integer to) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery("SELECT "
-                                + "* FROM observation o\n"
-                                + "WHERE o.project = ?1",
-                        Observation.class)
-                .setParameter(1, projectId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Observation> resultList = (List<Observation>) em.createNativeQuery("""
+                            SELECT * FROM observation o
+                            WHERE o.project = ?1
+                            """,
+                            Observation.class)
+                    .setParameter(1, projectId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while finding project observations for projectId: " + projectId +
+                    ", from: " + from + ", to: " + to + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find project observations", e);
+        }
     }
 
     @Deprecated
@@ -1341,8 +1470,8 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     //@Produces({MediaType.APPLICATION_JSON})
     @Produces(MediaType.TEXT_PLAIN)
     public String countProjectObservations(@PathParam("projectid") String projectId) {
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-        Project project = projectFacadeREST.find(projectId);
+
+        Project project = ProjectFacadeREST.getInstance().find(projectId);
         if (project != null) {
             List<Observation> observations = new ArrayList<>(project.getObservationList());
             List<Observation> filteredObservations = observations.stream().filter(r -> r.isDeleted() == false && r.getObservationType() >= 0).collect(Collectors.toList());
@@ -1355,20 +1484,27 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("countSingleProjectObservations/{projectId}")
     @Produces(MediaType.APPLICATION_JSON)
     public ObservationCounter countSingleProjectObservations(@PathParam("projectId") String projectId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        Query query = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
-                        " WHERE o.project = ?1 AND o.deleted = ?2")
-                .setParameter(1, projectId)
-                .setParameter(2, false);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            Query query = em.createNativeQuery("""
+                            SELECT COUNT(*) FROM observation o
+                            WHERE o.project = ?1 AND o.deleted = ?2
+                            """)
+                    .setParameter(1, projectId)
+                    .setParameter(2, false);
 
-        Number counter = (Number) query.getSingleResult();
-        int intCounter = Integer.parseInt(counter.toString());
+            Number counter = (Number) query.getSingleResult();
+            int intCounter = Integer.parseInt(counter.toString());
 
-        ObservationCounter observationCounter = new ObservationCounter();
-        observationCounter.setCounter(intCounter);
-        observationCounter.setProjectId(projectId);
-        em.close();
-        return observationCounter;
+            ObservationCounter observationCounter = new ObservationCounter();
+            observationCounter.setCounter(intCounter);
+            observationCounter.setProjectId(projectId);
+
+            return observationCounter;
+        } catch (Exception e) {
+            System.out.println("Exception while counting single project observations for projectId: " + projectId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to count single project observations", e);
+        }
     }
 
     private String createSqlString(ObservationRequestParameters parameters, Boolean isCounting) {
@@ -1462,133 +1598,154 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Produces({MediaType.APPLICATION_JSON})
     @Consumes({MediaType.APPLICATION_JSON})
     public Integer countObservations(ObservationRequestParameters parameters) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            String sql = createSqlString(parameters, true);
+            Query queryCounter = em.createNativeQuery(sql);
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        String sql = createSqlString(parameters, true);
-        Query queryCounter = em.createNativeQuery(sql);
+            Number counterUnassigned = (Number) queryCounter.getSingleResult();
+            Integer integerCounter = Integer.parseInt(counterUnassigned.toString());
 
-        Number counterUnassigned = (Number) queryCounter.getSingleResult();
-        Integer integerCounter = Integer.parseInt(counterUnassigned.toString());
-
-        em.close();
-        return integerCounter;
+            return integerCounter;
+        } catch (Exception e) {
+            System.out.println("Exception while counting observations with parameters: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to count observations", e);
+        }
     }
 
     @PUT
     @Path("loadProjectObservations")
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
+
     public List<Observation> loadProjectObservations(ObservationRequestParameters parameters) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        String queryString = createSqlString(parameters, false);
-        List<Observation> resultList = em.createNativeQuery(queryString, Observation.class)
-                .getResultList();
-        for(Observation observation: resultList) {
-            if(observation.getEquipment() != null) {
-                observation.setEquipmentId(observation.getEquipment().getEquipmentId());
-                observation.setEquipmentString(observation.getEquipment().getFullName());
-                if(observation.getEquipment().getTagId() != null) {
-                    observation.setEquipmentTagId(observation.getEquipment().getTagId());
-                }
-                observation.setEquipment(null);
-            }
-            if(observation.getLocation() != null) {
-                observation.setLocationId(observation.getLocation().getLocationId());
-                observation.setLocationString(observation.getLocation().getFullName());
-                observation.setLocation(null);
-            }
-            if(observation.getProject() != null) {
-                observation.setProjectNumber(observation.getProject().getProjectNumber());
-            }
-            if(observation.getOldProject() != null) {
-                observation.setOldProjectId(observation.getOldProject().getProjectId());
-                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
-            }
-            if(observation.getQuickChoiceItem() != null) {
-                observation.setQuickChoiceItem(null);
-            }
-            if(!observation.getMeasurementList().isEmpty()) {
-                List<Measurement> activeMeasurements = observation.getMeasurementList().stream().filter(r -> !r.getDeleted()).collect(Collectors.toList());
-                observation.setMeasurementCount(activeMeasurements.size());
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            String queryString = createSqlString(parameters, false);
+            List<Observation> resultList = em.createNativeQuery(queryString, Observation.class)
+                    .getResultList();
 
-                List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
-                if(!statusMeasurements.isEmpty()) {
-                    observation.getMeasurementList().clear();
-                    observation.getMeasurementList().addAll(statusMeasurements);
-                    observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
-                    observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
-                } else {
-                    observation.getMeasurementList().clear();
+            for (Observation observation : resultList) {
+                if (observation.getEquipment() != null) {
+                    observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+                    observation.setEquipmentString(observation.getEquipment().getFullName());
+                    if (observation.getEquipment().getTagId() != null) {
+                        observation.setEquipmentTagId(observation.getEquipment().getTagId());
+                    }
+                    observation.setEquipment(null);
                 }
+                if (observation.getLocation() != null) {
+                    observation.setLocationId(observation.getLocation().getLocationId());
+                    observation.setLocationString(observation.getLocation().getFullName());
+                    observation.setLocation(null);
+                }
+                if (observation.getProject() != null) {
+                    observation.setProjectNumber(observation.getProject().getProjectNumber());
+                }
+                if (observation.getOldProject() != null) {
+                    observation.setOldProjectId(observation.getOldProject().getProjectId());
+                    observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+                }
+                if (observation.getQuickChoiceItem() != null) {
+                    observation.setQuickChoiceItem(null);
+                }
+                if (!observation.getMeasurementList().isEmpty()) {
+                    List<Measurement> activeMeasurements = observation.getMeasurementList().stream()
+                            .filter(r -> !r.getDeleted())
+                            .collect(Collectors.toList());
+                    observation.setMeasurementCount(activeMeasurements.size());
 
+                    List<Measurement> statusMeasurements = observation.getMeasurementList().stream()
+                            .filter(r -> r.getName().equalsIgnoreCase("Status"))
+                            .collect(Collectors.toList());
+                    if (!statusMeasurements.isEmpty()) {
+                        observation.getMeasurementList().clear();
+                        observation.getMeasurementList().addAll(statusMeasurements);
+                        observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
+                        observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
+                    } else {
+                        observation.getMeasurementList().clear();
+                    }
+                }
+                if (!observation.getImageList().isEmpty()) {
+                    List<Media> activeImages = observation.getImageList().stream()
+                            .filter(r -> !r.isDeleted())
+                            .collect(Collectors.toList());
+                    observation.setImageCount(activeImages.size());
+                }
             }
-            if(!observation.getImageList().isEmpty()) {
-                List<Media> activeImages = observation.getImageList().stream().filter(r -> !r.isDeleted()).collect(Collectors.toList());
-                observation.setImageCount(activeImages.size());
-            }
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while loading project observations: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load project observations", e);
         }
-        return resultList;
     }
 
     @PUT
     @Path("loadProjectObservationsOptimized")
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
+
     public List<Observation> loadProjectObservationsOptimized(ObservationRequestParameters parameters) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        String queryString = createSqlString(parameters, false);
-        List<Observation> resultList = em.createNativeQuery(queryString, Observation.class)
-                .getResultList();
-        for(Observation observation: resultList) {
-            if(observation.getEquipment() != null) {
-                observation.setEquipmentId(observation.getEquipment().getEquipmentId());
-                observation.setEquipmentString(observation.getEquipment().getFullName());
-                if(observation.getEquipment().getTagId() != null) {
-                    observation.setEquipmentTagId(observation.getEquipment().getTagId());
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            String queryString = createSqlString(parameters, false);
+            List<Observation> resultList = em.createNativeQuery(queryString, Observation.class)
+                    .getResultList();
+            for(Observation observation: resultList) {
+                if(observation.getEquipment() != null) {
+                    observation.setEquipmentId(observation.getEquipment().getEquipmentId());
+                    observation.setEquipmentString(observation.getEquipment().getFullName());
+                    if(observation.getEquipment().getTagId() != null) {
+                        observation.setEquipmentTagId(observation.getEquipment().getTagId());
+                    }
+                    observation.setEquipment(null);
                 }
-                observation.setEquipment(null);
-            }
-            if(observation.getLocation() != null) {
-                observation.setLocationId(observation.getLocation().getLocationId());
-                observation.setLocationString(observation.getLocation().getFullName());
-                observation.setLocation(null);
-            }
-            if(observation.getProject() != null) {
-                observation.setProjectNumber(observation.getProject().getProjectNumber());
-            }
-            if(observation.getOldProject() != null) {
-                observation.setOldProjectId(observation.getOldProject().getProjectId());
-                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
-            }
-            if(observation.getQuickChoiceItem() != null) {
-                observation.setQuickChoiceItem(null);
-            }
-            if(!observation.getMeasurementList().isEmpty()) {
-                List<Measurement> activeMeasurements = observation.getMeasurementList().stream().filter(r -> !r.getDeleted()).collect(Collectors.toList());
-                observation.setMeasurementCount(activeMeasurements.size());
-
-                List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
-                if(!statusMeasurements.isEmpty()) {
-                    observation.getMeasurementList().clear();
-                    observation.getMeasurementList().addAll(statusMeasurements);
-                    observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
-                    observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
-                } else {
-                    observation.getMeasurementList().clear();
+                if(observation.getLocation() != null) {
+                    observation.setLocationId(observation.getLocation().getLocationId());
+                    observation.setLocationString(observation.getLocation().getFullName());
+                    observation.setLocation(null);
                 }
+                if(observation.getProject() != null) {
+                    observation.setProjectNumber(observation.getProject().getProjectNumber());
+                }
+                if(observation.getOldProject() != null) {
+                    observation.setOldProjectId(observation.getOldProject().getProjectId());
+                    observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+                }
+                if(observation.getQuickChoiceItem() != null) {
+                    observation.setQuickChoiceItem(null);
+                }
+                if(!observation.getMeasurementList().isEmpty()) {
+                    List<Measurement> activeMeasurements = observation.getMeasurementList().stream().filter(r -> !r.getDeleted()).collect(Collectors.toList());
+                    observation.setMeasurementCount(activeMeasurements.size());
 
+                    List<Measurement> statusMeasurements = observation.getMeasurementList().stream().filter(r -> r.getName().equalsIgnoreCase("Status")).collect(Collectors.toList());
+                    if(!statusMeasurements.isEmpty()) {
+                        observation.getMeasurementList().clear();
+                        observation.getMeasurementList().addAll(statusMeasurements);
+                        observation.setMeasurementStatusId(statusMeasurements.get(0).getMeasurementId());
+                        observation.setMeasurementStatusString(statusMeasurements.get(0).getStringValue());
+                    } else {
+                        observation.getMeasurementList().clear();
+                    }
+
+                }
+                if(!observation.getImageList().isEmpty()) {
+                    List<Media> activeImages = observation.getImageList().stream().filter(r -> !r.isDeleted()).collect(Collectors.toList());
+                    observation.setImageCount(activeImages.size());
+                }
+                if(observation.getOldProject() != null) {
+                    observation.setOldProjectId(observation.getOldProject().getProjectId());
+                    observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
+                    observation.setOldProject(null);
+                }
             }
-            if(!observation.getImageList().isEmpty()) {
-                List<Media> activeImages = observation.getImageList().stream().filter(r -> !r.isDeleted()).collect(Collectors.toList());
-                observation.setImageCount(activeImages.size());
-            }
-            if(observation.getOldProject() != null) {
-                observation.setOldProjectId(observation.getOldProject().getProjectId());
-                observation.setOldProjectNumber(observation.getOldProject().getProjectNumber());
-                observation.setOldProject(null);
-            }
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while loading optimized project observations: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load project observations", e);
         }
-        return resultList;
     }
 
 
@@ -1599,23 +1756,27 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Produces(MediaType.APPLICATION_JSON)
     public List<ObservationCounter> countProjectObservations(List<String> projectIds) {
         List<ObservationCounter> observationCounters = new ArrayList<>();
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        for (String projectId : projectIds) {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
-                            " WHERE (o.project = ?1 or o.old_project = ?1) AND o.deleted = ?2")
-                    .setParameter(1, projectId)
-                    .setParameter(2, false);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            for (String projectId : projectIds) {
+                Query query = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
+                                " WHERE (o.project = ?1 or o.old_project = ?1) AND o.deleted = ?2")
+                        .setParameter(1, projectId)
+                        .setParameter(2, false);
 
-            Number counter = (Number) query.getSingleResult();
-            int intCounter = Integer.parseInt(counter.toString());
+                Number counter = (Number) query.getSingleResult();
+                int intCounter = Integer.parseInt(counter.toString());
 
-            ObservationCounter observationCounter = new ObservationCounter();
-            observationCounter.setCounter(intCounter);
-            observationCounter.setProjectId(projectId);
-            observationCounters.add(observationCounter);
+                ObservationCounter observationCounter = new ObservationCounter();
+                observationCounter.setCounter(intCounter);
+                observationCounter.setProjectId(projectId);
+                observationCounters.add(observationCounter);
+            }
+            return observationCounters;
+        } catch (Exception e) {
+            System.out.println("Exception while counting project observations: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to count project observations", e);
         }
-        em.close();
-        return observationCounters;
     }
 
 /*    private Query createCounterSqlQuery(EntityManager em) {
@@ -1639,186 +1800,193 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Path("countCompanyDeviations")
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
+
     public List<DeviationCounter> countCompanyDeviations(ObservationRequestParameters parameters) {
-
         List<DeviationCounter> observationCounters = new ArrayList<>();
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        DeviationCounter deviationCounter = new DeviationCounter();
-        for (String companyId : parameters.entityIds) {
-            for (int i = 0; i < 4; i++) {
-                String showOpenOnlySql = "";
-                if (parameters.showOpenOnly) {
-                    showOpenOnlySql = "p.project_state < 7 and o.observation_state < 1 AND ";
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            DeviationCounter deviationCounter = new DeviationCounter();
+            for (String companyId : parameters.entityIds) {
+                for (int i = 0; i < 4; i++) {
+                    String showOpenOnlySql = "";
+                    if (parameters.showOpenOnly) {
+                        showOpenOnlySql = "p.project_state < 7 and o.observation_state < 1 AND ";
+                    }
+
+                    SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+                    String strFromDate = dateFormatter.format(parameters.fromDate);
+                    String strToDate = dateFormatter.format(parameters.toDate);
+                    // Count deviation for grade with state
+                    Query queryTG = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
+                                    "JOIN project p ON p.project_id = o.project\n" +
+                                    "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                    " WHERE " +
+                                    "   chp.company_company_id = ?1 AND " +
+                                    "   o.deleted = ?2 AND p.deleted = 0 AND o.deviation = ?4 AND " + showOpenOnlySql +
+                                    "   o.created_date > ?5 AND " +
+                                    "   o.created_date < ?6")
+
+                            .setParameter(1, companyId)
+                            .setParameter(2, false)
+                            .setParameter(4, i)
+                            .setParameter(5, strFromDate)
+                            .setParameter(6, strToDate);
+
+
+                    Number counterTG = (Number) queryTG.getSingleResult();
+                    int intCounterTG = Integer.parseInt(counterTG.toString());
+                    TgCounter tgCounter = new TgCounter(i, intCounterTG);
+                    deviationCounter.getTgCounters().add(tgCounter);
+
+                    // Count deviation overdue improvement
+                    //improvement_deadline
+                    // '2021-11-01 00:00:00'
+                    Date today = new Date();
+
+                    String strToday = dateFormatter.format(today);
+                    Query queryOverdue = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
+                                    "JOIN project p ON p.project_id = o.project\n" +
+                                    "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                    "WHERE chp.company_company_id = ?1 " +
+                                    "AND o.deleted = ?2 AND p.deleted = 0 AND o.observation_state < 1 AND o.deviation = ?4 " +
+                                    "AND o.improvement_deadline < ?5 AND" +
+                                    "   o.created_date > ?6 AND o.created_date < ?7")
+                            .setParameter(1, companyId)
+                            .setParameter(2, false)
+                            .setParameter(4, i)
+                            .setParameter(5, strToday)
+                            .setParameter(6, strFromDate)
+                            .setParameter(7, strToDate);
+
+                    Number counterOverdue = (Number) queryOverdue.getSingleResult();
+                    int intCounterOverdue = Integer.parseInt(counterOverdue.toString());
+                    tgCounter.setOverdueCounter(intCounterOverdue);
+
+                    Query queryUnassigned = em.createNativeQuery(
+                                    "SELECT count(*) FROM (SELECT p.project_number," +
+                                            "(SELECT count(*) FROM observation_has_user ohu\n " +
+                                            "  where ohu.observation_observation_id = o.observation_id) as counter" +
+                                            "  FROM observation o\n " +
+                                            "JOIN project p ON p.project_id = o.project\n" +
+                                            "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                            "WHERE chp.company_company_id = ?1 " +
+                                            "AND o.deleted = 0 AND p.deleted = 0 AND o.observation_state < 1 AND o.deviation = ?3 AND " +
+                                            "o.created_date > ?4 AND o.created_date < ?5) " +
+                                            "as assigned_observations WHERE assigned_observations.counter = 0")
+                            .setParameter(1, companyId)
+                            .setParameter(3, i)
+                            .setParameter(4, strFromDate)
+                            .setParameter(5, strToDate);
+
+                    Number counterUnassigned = (Number) queryUnassigned.getSingleResult();
+                    int intCounterUnassigned = Integer.parseInt(counterUnassigned.toString());
+                    tgCounter.setUnassignedCounter(intCounterUnassigned);
                 }
-
-                SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
-                String strFromDate = dateFormatter.format(parameters.fromDate);
-                String strToDate = dateFormatter.format(parameters.toDate);
-                // Count deviation for grade with state
-                Query queryTG = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
-                                "JOIN project p ON p.project_id = o.project\n" +
-                                "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                " WHERE " +
-                                "   chp.company_company_id = ?1 AND " +
-                                "   o.deleted = ?2 AND p.deleted = 0 AND o.deviation = ?4 AND " + showOpenOnlySql +
-                                "   o.created_date > ?5 AND " +
-                                "   o.created_date < ?6")
-
-                        .setParameter(1, companyId)
-                        .setParameter(2, false)
-                        .setParameter(4, i)
-                        .setParameter(5, strFromDate)
-                        .setParameter(6, strToDate);
-
-
-                Number counterTG = (Number) queryTG.getSingleResult();
-                int intCounterTG = Integer.parseInt(counterTG.toString());
-                TgCounter tgCounter = new TgCounter(i, intCounterTG);
-                deviationCounter.getTgCounters().add(tgCounter);
-
-                // Count deviation overdue improvement
-                //improvement_deadline
-                // '2021-11-01 00:00:00'
-                Date today = new Date();
-
-                String strToday = dateFormatter.format(today);
-                Query queryOverdue = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
-                                "JOIN project p ON p.project_id = o.project\n" +
-                                "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                "WHERE chp.company_company_id = ?1 " +
-                                "AND o.deleted = ?2 AND p.deleted = 0 AND o.observation_state < 1 AND o.deviation = ?4 " +
-                                "AND o.improvement_deadline < ?5 AND" +
-                                "   o.created_date > ?6 AND o.created_date < ?7")
-                        .setParameter(1, companyId)
-                        .setParameter(2, false)
-                        .setParameter(4, i)
-                        .setParameter(5, strToday)
-                        .setParameter(6, strFromDate)
-                        .setParameter(7, strToDate);
-
-                Number counterOverdue = (Number) queryOverdue.getSingleResult();
-                int intCounterOverdue = Integer.parseInt(counterOverdue.toString());
-                tgCounter.setOverdueCounter(intCounterOverdue);
-
-                Query queryUnassigned = em.createNativeQuery(
-                                "SELECT count(*) FROM (SELECT p.project_number," +
-                                        "(SELECT count(*) FROM observation_has_user ohu\n " +
-                                        "  where ohu.observation_observation_id = o.observation_id) as counter" +
-                                        "  FROM observation o\n " +
-                                        "JOIN project p ON p.project_id = o.project\n" +
-                                        "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                        "WHERE chp.company_company_id = ?1 " +
-                                        "AND o.deleted = 0 AND p.deleted = 0 AND o.observation_state < 1 AND o.deviation = ?3 AND " +
-                                        "o.created_date > ?4 AND o.created_date < ?5) " +
-                                        "as assigned_observations WHERE assigned_observations.counter = 0")
-                        .setParameter(1, companyId)
-                        .setParameter(3, i)
-                        .setParameter(4, strFromDate)
-                        .setParameter(5, strToDate);
-
-                Number counterUnassigned = (Number) queryUnassigned.getSingleResult();
-                int intCounterUnassigned = Integer.parseInt(counterUnassigned.toString());
-                tgCounter.setUnassignedCounter(intCounterUnassigned);
+                deviationCounter.setEntityId(companyId);
+                deviationCounter.setEntityName("company");
+                observationCounters.add(deviationCounter);
             }
-            deviationCounter.setEntityId(companyId);
-            deviationCounter.setEntityName("company");
-            observationCounters.add(deviationCounter);
+            return observationCounters;
+        } catch (Exception e) {
+            System.out.println("Exception while counting company deviations: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to count company deviations", e);
         }
-        em.close();
-        return observationCounters;
     }
-
     @PUT
     @Path("countAssetDeviations")
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
+
     public List<DeviationCounter> countAssetDeviations(ObservationRequestParameters parameters) {
         List<DeviationCounter> observationCounters = new ArrayList<>();
-        for (String assetId : parameters.entityIds) {
-            DeviationCounter deviationCounter = new DeviationCounter();
-            for (int i = 0; i < 4; i++) {
-                String showOpenOnlySql = "";
-                if (parameters.showOpenOnly) {
-                    showOpenOnlySql = "(p.project_state < 7 AND o.observation_state < 1) AND ";
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            for (String assetId : parameters.entityIds) {
+                DeviationCounter deviationCounter = new DeviationCounter();
+                for (int i = 0; i < 4; i++) {
+                    String showOpenOnlySql = "";
+                    if (parameters.showOpenOnly) {
+                        showOpenOnlySql = "(p.project_state < 7 AND o.observation_state < 1) AND ";
+                    }
+                    // Count deviation for grade with state
+                    SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+                    String strFromDate = dateFormatter.format(parameters.fromDate);
+                    String strToDate = dateFormatter.format(parameters.toDate);
+
+                    Query queryTG = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
+                                    "JOIN project p ON p.project_id = o.project\n" +
+                                    "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                    "JOIN asset a ON a.asset_id = p.asset" +
+                                    " WHERE " +
+                                    "   chp.company_company_id = ?1 AND a.asset_id = ?2 AND " +
+                                    "   o.deleted = ?3 AND p.deleted = 0 AND o.deviation = ?4 AND " + showOpenOnlySql +
+                                    "   o.created_date > ?5 AND " +
+                                    "   o.created_date < ?6")
+
+                            .setParameter(1, parameters.authorityId)
+                            .setParameter(2, assetId)
+                            .setParameter(3, false)
+                            .setParameter(4, i)
+                            .setParameter(5, strFromDate)
+                            .setParameter(6, strToDate);
+
+
+                    Number counterTG = (Number) queryTG.getSingleResult();
+                    int intCounterTG = Integer.parseInt(counterTG.toString());
+                    TgCounter tgCounter = new TgCounter(i, intCounterTG);
+                    // Count deviation overdue improvement
+                    //improvement_deadline
+                    // '2021-11-01 00:00:00'
+                    Date today = new Date();
+                    String strToday = dateFormatter.format(today);
+                    Query queryOverdue = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
+                                    "JOIN project p ON p.project_id = o.project\n" +
+                                    "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                    "WHERE chp.company_company_id = ?1 " +
+                                    "AND o.deleted = ?2 AND p.deleted = 0 AND o.observation_state < 1 AND o.deviation = ?4 " +
+                                    "AND o.improvement_deadline < ?5 AND" +
+                                    "   o.created_date > ?6 AND o.created_date < ?7")
+                            .setParameter(1, parameters.parentEntity)
+                            .setParameter(2, false)
+                            .setParameter(4, i)
+                            .setParameter(5, strToday)
+                            .setParameter(6, strFromDate)
+                            .setParameter(7, strToDate);
+
+                    Number counterOverdue = (Number) queryOverdue.getSingleResult();
+                    int intCounterOverdue = Integer.parseInt(counterOverdue.toString());
+                    tgCounter.setOverdueCounter(intCounterOverdue);
+
+                    Query queryUnassigned = em.createNativeQuery(
+                                    "SELECT count(*) FROM (SELECT p.project_number," +
+                                            "(SELECT count(*) FROM observation_has_user ohu\n " +
+                                            "  where ohu.observation_observation_id = o.observation_id) as counter" +
+                                            "  FROM observation o\n " +
+                                            "JOIN project p ON p.project_id = o.project\n" +
+                                            "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                            "WHERE chp.company_company_id = ?1 " +
+                                            "AND o.deleted = 0 AND p.deleted = 0 AND o.observation_state < 1 AND o.deviation = ?3 AND " +
+                                            "o.created_date > ?4 AND o.created_date < ?5) " +
+                                            "as assigned_observations WHERE assigned_observations.counter = 0")
+                            .setParameter(1, parameters.parentEntity)
+                            .setParameter(3, i)
+                            .setParameter(4, strFromDate)
+                            .setParameter(5, strToDate);
+
+                    Number counterUnassigned = (Number) queryUnassigned.getSingleResult();
+                    int intCounterUnassigned = Integer.parseInt(counterUnassigned.toString());
+                    tgCounter.setUnassignedCounter(intCounterUnassigned);
+                    deviationCounter.getTgCounters().add(tgCounter);
                 }
-                // Count deviation for grade with state
-                SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
-                String strFromDate = dateFormatter.format(parameters.fromDate);
-                String strToDate = dateFormatter.format(parameters.toDate);
-
-                EntityManager em = LocalEntityManagerFactory.createEntityManager();
-                Query queryTG = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
-                                "JOIN project p ON p.project_id = o.project\n" +
-                                "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                "JOIN asset a ON a.asset_id = p.asset" +
-                                " WHERE " +
-                                "   chp.company_company_id = ?1 AND a.asset_id = ?2 AND " +
-                                "   o.deleted = ?3 AND p.deleted = 0 AND o.deviation = ?4 AND " + showOpenOnlySql +
-                                "   o.created_date > ?5 AND " +
-                                "   o.created_date < ?6")
-
-                        .setParameter(1, parameters.authorityId)
-                        .setParameter(2, assetId)
-                        .setParameter(3, false)
-                        .setParameter(4, i)
-                        .setParameter(5, strFromDate)
-                        .setParameter(6, strToDate);
-
-
-                Number counterTG = (Number) queryTG.getSingleResult();
-                int intCounterTG = Integer.parseInt(counterTG.toString());
-                TgCounter tgCounter = new TgCounter(i, intCounterTG);
-                // Count deviation overdue improvement
-                //improvement_deadline
-                // '2021-11-01 00:00:00'
-                Date today = new Date();
-                String strToday = dateFormatter.format(today);
-                Query queryOverdue = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
-                                "JOIN project p ON p.project_id = o.project\n" +
-                                "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                "WHERE chp.company_company_id = ?1 " +
-                                "AND o.deleted = ?2 AND p.deleted = 0 AND o.observation_state < 1 AND o.deviation = ?4 " +
-                                "AND o.improvement_deadline < ?5 AND" +
-                                "   o.created_date > ?6 AND o.created_date < ?7")
-                        .setParameter(1, parameters.parentEntity)
-                        .setParameter(2, false)
-                        .setParameter(4, i)
-                        .setParameter(5, strToday)
-                        .setParameter(6, strFromDate)
-                        .setParameter(7, strToDate);
-
-                Number counterOverdue = (Number) queryOverdue.getSingleResult();
-                int intCounterOverdue = Integer.parseInt(counterOverdue.toString());
-                tgCounter.setOverdueCounter(intCounterOverdue);
-
-                Query queryUnassigned = em.createNativeQuery(
-                                "SELECT count(*) FROM (SELECT p.project_number," +
-                                        "(SELECT count(*) FROM observation_has_user ohu\n " +
-                                        "  where ohu.observation_observation_id = o.observation_id) as counter" +
-                                        "  FROM observation o\n " +
-                                        "JOIN project p ON p.project_id = o.project\n" +
-                                        "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                        "WHERE chp.company_company_id = ?1 " +
-                                        "AND o.deleted = 0 AND p.deleted = 0 AND o.observation_state < 1 AND o.deviation = ?3 AND " +
-                                        "o.created_date > ?4 AND o.created_date < ?5) " +
-                                        "as assigned_observations WHERE assigned_observations.counter = 0")
-                        .setParameter(1, parameters.parentEntity)
-                        .setParameter(3, i)
-                        .setParameter(4, strFromDate)
-                        .setParameter(5, strToDate);
-
-                Number counterUnassigned = (Number) queryUnassigned.getSingleResult();
-                int intCounterUnassigned = Integer.parseInt(counterUnassigned.toString());
-                tgCounter.setUnassignedCounter(intCounterUnassigned);
-                deviationCounter.getTgCounters().add(tgCounter);
-
-                em.close();
+                deviationCounter.setEntityId(assetId);
+                deviationCounter.setEntityName("asset");
+                observationCounters.add(deviationCounter);
             }
-            deviationCounter.setEntityId(assetId);
-            deviationCounter.setEntityName("asset");
-            observationCounters.add(deviationCounter);
+            return observationCounters;
+        } catch (Exception e) {
+            System.out.println("Exception while counting asset deviations: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to count asset deviations", e);
         }
-        return observationCounters;
     }
 
     @PUT
@@ -1826,7 +1994,6 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
     public List<DeviationCounter> countProjectDeviations(ObservationRequestParameters parameters) {
-
         if (parameters.fromDate == null) {
             parameters.fromDate = new Date(0);
         }
@@ -1834,111 +2001,113 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
             parameters.toDate = new Date();
         }
         List<DeviationCounter> observationCounters = new ArrayList<>();
-        for (String projectId : parameters.entityIds) {
-            DeviationCounter deviationCounter = new DeviationCounter();
-            for (int i = 0; i < 4; i++) {
-                EntityManager em = LocalEntityManagerFactory.createEntityManager();
-                String showOpenOnlySql = "";
-                if (parameters.showOpenOnly) {
-                    showOpenOnlySql = "p.project_state < 7 AND o.observation_state < 1 AND ";
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            for (String projectId : parameters.entityIds) {
+                DeviationCounter deviationCounter = new DeviationCounter();
+                for (int i = 0; i < 4; i++) {
+                    String showOpenOnlySql = "";
+                    if (parameters.showOpenOnly) {
+                        showOpenOnlySql = "p.project_state < 7 AND o.observation_state < 1 AND ";
+                    }
+
+                    String filterProjectSql = "";
+                    if (parameters.parentEntity.equalsIgnoreCase("project")) {
+                        filterProjectSql = "p.project_id = '" + projectId + "' AND ";
+                    }
+
+                    // Count deviation for grade with state i
+                    SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
+                    String strFromDate = dateFormatter.format(parameters.fromDate);
+                    String strToDate = dateFormatter.format(parameters.toDate);
+
+                    Query queryTG = em.createNativeQuery("" +
+                                    "SELECT COUNT(*) FROM observation o\n " +
+                                    "   JOIN project p ON p.project_id = o.project\n" +
+                                    "   JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                    " WHERE " +
+                                    "   chp.company_company_id = ?1 AND " +
+                                    "   o.project = ?2 AND " +
+                                    "   o.deleted = 0 AND " +
+                                    "   o.deviation = ?3 AND " +
+                                    showOpenOnlySql +
+                                    "   o.created_date > ?4 AND " +
+                                    "   o.created_date < ?5")
+
+                            .setParameter(1, parameters.authorityId)
+                            .setParameter(2, projectId)
+                            .setParameter(3, i)
+                            .setParameter(4, strFromDate)
+                            .setParameter(5, strToDate);
+
+
+                    Number counterTG = (Number) queryTG.getSingleResult();
+                    int intCounterTG = Integer.parseInt(counterTG.toString());
+                    TgCounter tgCounter = new TgCounter(i, intCounterTG);
+
+                    // Count deviation overdue improvement
+                    //improvement_deadline
+                    Date today = new Date();
+                    String strToday = dateFormatter.format(today);
+                    Query queryOverdue = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
+                                    "JOIN project p ON p.project_id = o.project\n" +
+                                    "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                    "WHERE " +
+                                    "chp.company_company_id = ?1 AND " +
+                                    " o.deleted = ?2 AND " +
+                                    " p.deleted = 0 AND " +
+                                    " o.observation_state < 1 AND " +
+                                    " o.deviation = ?4 AND " +
+                                    " o.improvement_deadline < ?5 AND " +
+                                    filterProjectSql +
+                                    " o.created_date > ?6 AND " +
+                                    "o.created_date < ?7")
+                            .setParameter(1, parameters.authorityId)
+                            .setParameter(2, false)
+                            .setParameter(4, i)
+                            .setParameter(5, strToday)
+                            .setParameter(6, strFromDate)
+                            .setParameter(7, strToDate);
+
+                    Number counterOverdue = (Number) queryOverdue.getSingleResult();
+                    int intCounterOverdue = Integer.parseInt(counterOverdue.toString());
+                    tgCounter.setOverdueCounter(intCounterOverdue);
+
+                    Query queryUnassigned = em.createNativeQuery(
+                                    "SELECT count(*) FROM (SELECT p.project_number," +
+                                            "(SELECT count(*) FROM observation_has_user ohu\n " +
+                                            "  where ohu.observation_observation_id = o.observation_id) as counter" +
+                                            "  FROM observation o\n " +
+                                            "JOIN project p ON p.project_id = o.project\n" +
+                                            "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
+                                            "WHERE " +
+                                            "chp.company_company_id = ?1 AND " +
+                                            " o.deleted = 0 AND " +
+                                            " p.deleted = 0 AND " +
+                                            " o.observation_state < 1 AND " +
+                                            " o.deviation = ?3 AND " +
+                                            filterProjectSql +
+                                            " o.created_date > ?4 AND o.created_date < ?5) " +
+                                            "as assigned_observations WHERE assigned_observations.counter = 0")
+                            .setParameter(1, parameters.authorityId)
+                            .setParameter(3, i)
+                            .setParameter(4, strFromDate)
+                            .setParameter(5, strToDate);
+
+                    Number counterUnassigned = (Number) queryUnassigned.getSingleResult();
+                    int intCounterUnassigned = Integer.parseInt(counterUnassigned.toString());
+                    tgCounter.setUnassignedCounter(intCounterUnassigned);
+                    deviationCounter.getTgCounters().add(tgCounter);
                 }
-
-                String filterProjectSql = "";
-                if (parameters.parentEntity.equalsIgnoreCase("project")) {
-                    filterProjectSql = "p.project_id = '" + projectId + "' AND ";
-                }
-
-                // Count deviation for grade with state i
-                SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy.MM.dd HH:mm:ss");
-                String strFromDate = dateFormatter.format(parameters.fromDate);
-                String strToDate = dateFormatter.format(parameters.toDate);
-
-                Query queryTG = em.createNativeQuery("" +
-                                "SELECT COUNT(*) FROM observation o\n " +
-                                "   JOIN project p ON p.project_id = o.project\n" +
-                                "   JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                " WHERE " +
-                                "   chp.company_company_id = ?1 AND " +
-                                "   o.project = ?2 AND " +
-                                "   o.deleted = 0 AND " +
-                                "   o.deviation = ?3 AND " +
-                                showOpenOnlySql +
-                                "   o.created_date > ?4 AND " +
-                                "   o.created_date < ?5")
-
-                        .setParameter(1, parameters.authorityId)
-                        .setParameter(2, projectId)
-                        .setParameter(3, i)
-                        .setParameter(4, strFromDate)
-                        .setParameter(5, strToDate);
-
-
-                Number counterTG = (Number) queryTG.getSingleResult();
-                int intCounterTG = Integer.parseInt(counterTG.toString());
-                TgCounter tgCounter = new TgCounter(i, intCounterTG);
-
-                // Count deviation overdue improvement
-                //improvement_deadline
-                Date today = new Date();
-                String strToday = dateFormatter.format(today);
-                Query queryOverdue = em.createNativeQuery("SELECT COUNT(*) FROM observation o\n " +
-                                "JOIN project p ON p.project_id = o.project\n" +
-                                "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                "WHERE " +
-                                "chp.company_company_id = ?1 AND " +
-                                " o.deleted = ?2 AND " +
-                                " p.deleted = 0 AND " +
-                                " o.observation_state < 1 AND " +
-                                " o.deviation = ?4 AND " +
-                                " o.improvement_deadline < ?5 AND " +
-                                filterProjectSql +
-                                " o.created_date > ?6 AND " +
-                                "o.created_date < ?7")
-                        .setParameter(1, parameters.authorityId)
-                        .setParameter(2, false)
-                        .setParameter(4, i)
-                        .setParameter(5, strToday)
-                        .setParameter(6, strFromDate)
-                        .setParameter(7, strToDate);
-
-                Number counterOverdue = (Number) queryOverdue.getSingleResult();
-                int intCounterOverdue = Integer.parseInt(counterOverdue.toString());
-                tgCounter.setOverdueCounter(intCounterOverdue);
-
-                Query queryUnassigned = em.createNativeQuery(
-                                "SELECT count(*) FROM (SELECT p.project_number," +
-                                        "(SELECT count(*) FROM observation_has_user ohu\n " +
-                                        "  where ohu.observation_observation_id = o.observation_id) as counter" +
-                                        "  FROM observation o\n " +
-                                        "JOIN project p ON p.project_id = o.project\n" +
-                                        "JOIN company_has_project chp ON chp.project_project_id = p.project_id \n " +
-                                        "WHERE " +
-                                        "chp.company_company_id = ?1 AND " +
-                                        " o.deleted = 0 AND " +
-                                        " p.deleted = 0 AND " +
-                                        " o.observation_state < 1 AND " +
-                                        " o.deviation = ?3 AND " +
-                                        filterProjectSql +
-                                        " o.created_date > ?4 AND o.created_date < ?5) " +
-                                        "as assigned_observations WHERE assigned_observations.counter = 0")
-                        .setParameter(1, parameters.authorityId)
-                        .setParameter(3, i)
-                        .setParameter(4, strFromDate)
-                        .setParameter(5, strToDate);
-
-                Number counterUnassigned = (Number) queryUnassigned.getSingleResult();
-                int intCounterUnassigned = Integer.parseInt(counterUnassigned.toString());
-                tgCounter.setUnassignedCounter(intCounterUnassigned);
-                deviationCounter.getTgCounters().add(tgCounter);
-
-                em.close();
+                deviationCounter.setEntityId(projectId);
+                deviationCounter.setEntityName("project");
+                observationCounters.add(deviationCounter);
             }
-            deviationCounter.setEntityId(projectId);
-            deviationCounter.setEntityName("project");
-            observationCounters.add(deviationCounter);
+            return observationCounters;
+        } catch (Exception e) {
+            System.out.println("Exception while counting project deviations: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to count project deviations", e);
         }
-
-        return observationCounters;
     }
 
     @PUT
@@ -1946,10 +2115,9 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
     public List<ObservationCounter> countProjectObservationsForCompany(@PathParam("companyId") String companyId, List<String> projectIds) {
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
         List<ObservationCounter> observationCounters = new ArrayList<>();
         for (String projectId : projectIds) {
-            Project project = projectFacadeREST.find(projectId);
+            Project project = ProjectFacadeREST.getInstance().find(projectId);
             List<Observation> observations;
             String createdCompanyId = "";
             if (project.getCreatedCompany() == null) {
@@ -1974,119 +2142,104 @@ public class ObservationFacadeREST extends AbstractFacade<Observation> {
         return observationCounters;
     }
 
-    public List<Observation> loadObservationsInPeriod(String fromDate,
-                                                      String toDate) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-        DateTime jodaFromTime = new DateTime(fromDate);
-        DateTime jodaToTime = new DateTime(toDate);
-
-        List<Observation> resultList = (List<Observation>) em.createNativeQuery(
-                        "SELECT DISTINCT " +
-                                "    obs.*" +
-                                "FROM " +
-                                "    observation obs " +
-                                "        JOIN " +
-                                "    project p ON obs.project = p.project_id " +
-                                "        JOIN " +
-                                "    company_has_project chp ON chp.project_project_id = p.project_id " +
-                                "WHERE\n" +
-                                "    chp.company_company_id != 'E07121A7-024A-4D0E-8B58-A064F0BC4A22' " +
-                                "AND obs.created_date > ?1 " +
-                                "AND obs.created_date < ?2 " +
-                                "AND obs.deleted = '0' " +
-                                "AND p.deleted = '0' " +
-                                "AND obs.modified_user != 'F7B6EFB5-467F-46BD-A9FA-CF4CAB9D9AD9' " +
-                                "AND obs.modified_user != 'klaus' ", Observation.class)
-                .setParameter(1, jodaFromTime.toString())
-                .setParameter(2, jodaToTime.toString())
-                .getResultList();
-        em.close();
-        return resultList;
-    }
 
     public int countObservationsInPeriod(String fromDate, String toDate, int deviation) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            DateTime jodaFromTime = new DateTime(fromDate);
+            DateTime jodaToTime = new DateTime(toDate);
 
-        DateTime jodaFromTime = new DateTime(fromDate);
-        DateTime jodaToTime = new DateTime(toDate);
+            Query query = em.createNativeQuery(
+                            "SELECT count(obs.observation_id) " +
+                                    "FROM " +
+                                    "    observation obs " +
+                                    "        JOIN " +
+                                    "    project p ON obs.project = p.project_id " +
+                                    "WHERE\n" +
+                                    "    p.created_company != 'E07121A7-024A-4D0E-8B58-A064F0BC4A22' " +
+                                    "AND obs.created_date > ?1 " +
+                                    "AND obs.created_date < ?2 " +
+                                    "AND obs.deviation = ?3 " +
+                                    "AND obs.deleted = '0' " +
+                                    "AND p.deleted = '0' ")
+                    .setParameter(1, jodaFromTime.toString())
+                    .setParameter(2, jodaToTime.toString())
+                    .setParameter(3, deviation);
 
-        Query query = em.createNativeQuery(
-                        "SELECT count(obs.observation_id) " +
-                                "FROM " +
-                                "    observation obs " +
-                                "        JOIN " +
-                                "    project p ON obs.project = p.project_id " +
-                                "WHERE\n" +
-                                "    p.created_company != 'E07121A7-024A-4D0E-8B58-A064F0BC4A22' " +
-                                "AND obs.created_date > ?1 " +
-                                "AND obs.created_date < ?2 " +
-                                "AND obs.deviation = ?3 " +
-                                "AND obs.deleted = '0' " +
-                                "AND p.deleted = '0' ")
-                .setParameter(1, jodaFromTime.toString())
-                .setParameter(2, jodaToTime.toString())
-                .setParameter(3, deviation);
-
-        Number counter = (Number) query.getSingleResult();
-        int intCounter = Integer.parseInt(counter.toString());
-        em.close();
-        return intCounter;
+            Number counter = (Number) query.getSingleResult();
+            int intCounter = Integer.parseInt(counter.toString());
+            return intCounter;
+        } catch (Exception e) {
+            System.out.println("Exception while counting observations in period: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to count observations in period", e);
+        }
     }
 
     @PUT
     @Path("findMissing/{projectId}")
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
+
     public List<String> findMissing(@PathParam("projectId") String projectId, List<String> observationIds) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
         List<String> missingIds = new ArrayList<>();
-        for (String observationId : observationIds) {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM observation o " +
-                            " WHERE o.observation_id = ?1 AND o.project = ?2")
-                    .setParameter(1, observationId)
-                    .setParameter(2, projectId);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            for (String observationId : observationIds) {
+                Query query = em.createNativeQuery("SELECT COUNT(*) FROM observation o " +
+                                " WHERE o.observation_id = ?1 AND o.project = ?2")
+                        .setParameter(1, observationId)
+                        .setParameter(2, projectId);
 
-            Number counter = (Number) query.getSingleResult();
-            int intCounter = Integer.parseInt(counter.toString());
+                Number counter = (Number) query.getSingleResult();
+                int intCounter = Integer.parseInt(counter.toString());
 
-            if (intCounter == 0) {
-                missingIds.add(observationId);
+                if (intCounter == 0) {
+                    missingIds.add(observationId);
+                }
             }
+            return missingIds;
+        } catch (Exception e) {
+            System.out.println("Exception while finding missing observations for project " + projectId + ": " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find missing observations", e);
         }
-        em.close();
-        return missingIds;
     }
 
     @GET
     @Path("resetRenew/{observationId}/{oldProjectId}")
     //@Produces({MediaType.APPLICATION_JSON})
-    public void resetRenew(@PathParam("observationId") String observationId, @PathParam("oldProjectId") String oldProjectId) {
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            tx.begin();
-            Observation observation = findNative(observationId);
-            if(observation != null) {
-                if(observation.getOldProjectId() != null) {
-                    ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-                    Project oldProject = projectFacadeREST.findNative(oldProjectId);
-                    if (oldProject != null) {
-                        final int i = em.createNativeQuery(
-                                        "UPDATE observation SET project = ?, old_project = NULL \n" +
-                                                "WHERE (observation_id = ?);"
-                                ).setParameter(1, oldProject.getProjectId())
-                                .setParameter(2, observationId)
-                                .executeUpdate();
+    public void resetRenew(@PathParam("observationId") String observationId, @PathParam("oldProjectId") String oldProjectId) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            EntityTransaction tx = em.getTransaction();
+            try {
+                tx.begin();
+                Observation observation = findNative(observationId);
+                if(observation != null) {
+                    if(observation.getOldProjectId() != null) {
+                        Project oldProject = ProjectFacadeREST.getInstance().findNative(oldProjectId);
+                        if (oldProject != null) {
+                            final int i = em.createNativeQuery(
+                                            "UPDATE observation SET project = ?, old_project = NULL \n" +
+                                                    "WHERE (observation_id = ?);"
+                                    ).setParameter(1, oldProject.getProjectId())
+                                    .setParameter(2, observationId)
+                                    .executeUpdate();
+                        }
                     }
                 }
+                tx.commit();
+            } catch (Exception exp) {
+                if (tx.isActive()) {
+                    tx.rollback();
+                }
+                System.out.println("Exception while resetting renew for observation " + observationId + ": " + exp.getMessage());
+                exp.printStackTrace(System.err);
+                throw new RuntimeException("Failed to reset renew for observation", exp);
             }
-            tx.commit();
-        } catch (Exception exp) {
-            tx.rollback();
-        } finally {
-            em.close();
+        } catch (Exception e) {
+            System.out.println("Exception while creating EntityManager for resetRenew: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to initialize EntityManager", e);
         }
     }
 }

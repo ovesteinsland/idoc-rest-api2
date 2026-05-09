@@ -1,8 +1,9 @@
-<!DOCTYPE web-app PUBLIC
- "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN"
- "http://java.sun.com/dtd/web-app_2_3.dtd" >
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_6_0.xsd"
+         version="6.0">
 
-<web-app>
   <display-name>Archetype Created Web Application</display-name>
   <servlet>
     <servlet-name>Jersey Web Application</servlet-name>
@@ -10,7 +11,7 @@
     <init-param>
       <param-name>jersey.config.server.provider.packages</param-name>
       <param-value>no.softwarecontrol.idoc.webservices.restapi;no.softwarecontrol.idoc.filter</param-value>
-     </init-param>
+    </init-param>
 
     <load-on-startup>0</load-on-startup>
   </servlet>
@@ -51,7 +52,8 @@
     </init-param>
     <init-param>
       <param-name>disableBasicOnPaths</param-name>
-      <param-value>/iDocWebServices/webresources/no.softwarecontrol.idoc.entityobject.sms,/idoc_rest_api2_war/iDocWebServices/webresources/no.softwarecontrol.idoc.entityobject.sms</param-value>
+      <!--param-value>/iDocWebServices/webresources/no.softwarecontrol.idoc.entityobject.sms,/idoc_rest_api2_war/iDocWebServices/webresources/no.softwarecontrol.idoc.entityobject.sms,/iDocWebServices/webresources/cognito/login,/iDocWebServices/webresources/cognito/register,/iDocWebServices/webresources/cognito/confirm-email,/iDocWebServices/webresources/cognito/tokens,/iDocWebServices/webresources/cognito/refresh-token</param-value-->
+    <param-value>/iDocWebServices/webresources/cognito/login,/iDocWebServices/webresources/cognito/register,/iDocWebServices/webresources/cognito/confirm-email,/iDocWebServices/webresources/cognito/tokens,/iDocWebServices/webresources/cognito/refresh-token</param-value>
     </init-param>
   </filter>
   <filter-mapping>
@@ -59,7 +61,12 @@
     <url-pattern>/iDocWebServices/webresources/*</url-pattern>
   </filter-mapping>
 
+  <resource-ref>
+    <description>DB Connection for iDocDatabase</description>
+    <res-ref-name>jdbc/iDocDatabase</res-ref-name>
+    <res-type>javax.sql.DataSource</res-type>
+    <res-auth>Container</res-auth>
+    <res-sharing-scope>Shareable</res-sharing-scope>
+  </resource-ref>
+
 </web-app>
-
-
-

@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
@@ -19,6 +20,7 @@ import java.util.*;
 @Path("no.softwarecontrol.idoc.entityobject.invoice")
 @RolesAllowed({"ApplicationRole"})
 public class InvoiceFacadeREST extends AbstractFacade<Invoice> {
+
     public InvoiceFacadeREST() {
         super(Invoice.class);
     }
@@ -32,15 +34,20 @@ public class InvoiceFacadeREST extends AbstractFacade<Invoice> {
     @Path("loadByCompany/{companyId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Invoice> loadByCompany(@PathParam("companyId") String companyId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Invoice> resultList = (List<Invoice>) em.createNativeQuery("SELECT "
-                                + "* FROM invoice i\n"
-                                + "WHERE i.company = ?1\n",
-                        Invoice.class)
-                .setParameter(1, companyId)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Invoice> resultList = (List<Invoice>) em.createNativeQuery("""
+                            SELECT * FROM invoice i
+                            WHERE i.company = ?1
+                            """,
+                            Invoice.class)
+                    .setParameter(1, companyId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while loading invoices for companyId: " + companyId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to load invoices by company", e);
+        }
     }
 
     @POST
@@ -55,13 +62,12 @@ public class InvoiceFacadeREST extends AbstractFacade<Invoice> {
     @Path("createWithCompany/{companyId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithCompany(@PathParam("companyId") String companyId, Invoice invoice) {
-        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-        Company company = companyFacadeREST.find(companyId);
+        Company company = CompanyFacadeREST.getInstance().find(companyId);
         if (company != null) {
             invoice.setCompany(company);
             super.create(invoice);
             company.getInvoiceList().add(invoice);
-            companyFacadeREST.editInternal(company);
+            CompanyFacadeREST.getInstance().editInternal(company);
         }
     }
 
@@ -111,9 +117,7 @@ public class InvoiceFacadeREST extends AbstractFacade<Invoice> {
         projectRequestParameters.excludeUpcoming = true;
         projectRequestParameters.isDeleted = false;
 
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-        //List<Project> projects2 = projectFacadeREST.loadProjects(projectRequestParameters);
-        List<Project> projects = projectFacadeREST.loadInvoiceProjects(projectRequestParameters);
+        List<Project> projects = ProjectFacadeREST.getInstance().loadInvoiceProjects(projectRequestParameters);
         // Sorter stigende dato
         Collections.sort(projects, (Project o2, Project o1) -> o2.getCreatedDate().compareTo(o1.getCreatedDate()));
 

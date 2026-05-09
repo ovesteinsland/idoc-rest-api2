@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -25,8 +26,8 @@ public class KeyFaultLanguageFacadeREST extends AbstractFacade<KeyFaultLanguage>
     @Path("create/{keyFaultId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("keyFaultId") String keyFaultId, KeyFaultLanguage entity) {
-        KeyFaultFacadeREST keyFaultFacadeREST = new KeyFaultFacadeREST();
-        KeyFault keyFault = keyFaultFacadeREST.find(keyFaultId);
+
+        KeyFault keyFault = KeyFaultFacadeREST.getInstance().find(keyFaultId);
         entity.setKeyFault(keyFault);
         super.create(entity);
     }

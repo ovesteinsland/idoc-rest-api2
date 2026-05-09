@@ -31,13 +31,19 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class QuickChoiceGroupFacadeREST extends AbstractFacade<QuickChoiceGroup> {
 
-    @EJB
-    private AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-    @EJB
-    private DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
+    private static QuickChoiceGroupFacadeREST instance;
+
 
     public QuickChoiceGroupFacadeREST() {
         super(QuickChoiceGroup.class);
+        instance = this;
+    }
+
+    public static QuickChoiceGroupFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new QuickChoiceGroupFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -57,11 +63,11 @@ public class QuickChoiceGroupFacadeREST extends AbstractFacade<QuickChoiceGroup>
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToDisipline(@PathParam("disiplineId") String disiplineId, QuickChoiceGroup entity) {
         QuickChoiceGroup quickChoiceGroup = this.find(entity.getQuickChoiceGroupId());
-        Disipline disipline = disiplineFacadeREST.find(disiplineId);
+        Disipline disipline = DisiplineFacadeREST.getInstance().find(disiplineId);
         if (disipline != null && quickChoiceGroup != null) {
             if (!disipline.getQuickChoiceGroupList().contains(quickChoiceGroup)) {
                 disipline.getQuickChoiceGroupList().add(quickChoiceGroup);
-                disiplineFacadeREST.edit(disipline);
+                DisiplineFacadeREST.getInstance().edit(disipline);
             }
             quickChoiceGroup.setDisipline(disipline);
             this.edit(quickChoiceGroup);
@@ -138,42 +144,32 @@ public class QuickChoiceGroupFacadeREST extends AbstractFacade<QuickChoiceGroup>
         return super.find(id);
     }
 
-    @GET
-    @Override
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<QuickChoiceGroup> findAll() {
-        return super.findAll();
-    }
+//    @GET
+//    @Override
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<QuickChoiceGroup> findAll() {
+//        return super.findAll();
+//    }
 
 
-    public QuickChoiceGroup findByDisipline(String id) {
-        QuickChoiceGroup quickChoiceGroup = null;
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<QuickChoiceGroup> resultList = (List<QuickChoiceGroup>) em.createNativeQuery("SELECT "
-                        + "* FROM quick_choice_group qcg\n"
-                        + "WHERE qcg.disipline = ?1",
-                QuickChoiceGroup.class)
-                .setParameter(1, id)
-                .getResultList();
-        em.close();
-        if (!resultList.isEmpty()) {
-            return resultList.get(0);
-        }
-        return quickChoiceGroup;
-    }
+
 
     public List<QuickChoiceGroup> findByDisipline2(String id) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<QuickChoiceGroup> quickChoiceGroups = (List<QuickChoiceGroup>) em.createNativeQuery("SELECT "
-                        + "* FROM quick_choice_group qcg\n"
-                        + "JOIN disipline_has_quick_choice_group dhqcg \n"
-                        + "	ON dhqcg.quick_choice_group_quick_choice_group_id = qcg.quick_choice_group_id\n"
-                        + "WHERE dhqcg.disipline_disipline_id = ?1",
-                QuickChoiceGroup.class)
-                .setParameter(1, id)
-                .getResultList();
-        em.close();
-        return quickChoiceGroups;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<QuickChoiceGroup> quickChoiceGroups = (List<QuickChoiceGroup>) em.createNativeQuery("""
+                SELECT * FROM quick_choice_group qcg
+                JOIN disipline_has_quick_choice_group dhqcg
+                    ON dhqcg.quick_choice_group_quick_choice_group_id = qcg.quick_choice_group_id
+                WHERE dhqcg.disipline_disipline_id = ?1
+                """, QuickChoiceGroup.class)
+                    .setParameter(1, id)
+                    .getResultList();
+            return quickChoiceGroups;
+        } catch (Exception e) {
+            System.out.println("Feil ved søk etter quick choice grupper for disiplin: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke finne quick choice grupper for disiplin", e);
+        }
     }
 
     @GET
@@ -259,7 +255,7 @@ public class QuickChoiceGroupFacadeREST extends AbstractFacade<QuickChoiceGroup>
     @Path("findAssetQuickChoiceGroups/{assetid}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<QuickChoiceGroup> findAssetQuickChoiceGroups(@PathParam("assetid") String assetId) {
-        Asset asset = assetFacadeREST.find(assetId);
+        Asset asset = AssetFacadeREST.getInstance().find(assetId);
         List<QuickChoiceGroup> checkLists = new ArrayList<>();
         for (QuickChoiceGroup checkList : asset.getQuickChoiceGroupList()) {
             if (checkList.getParent() == null) {

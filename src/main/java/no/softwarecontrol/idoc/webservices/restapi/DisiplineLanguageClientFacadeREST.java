@@ -2,6 +2,7 @@ package no.softwarecontrol.idoc.webservices.restapi;
 
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -14,6 +15,8 @@ import no.softwarecontrol.idoc.data.entityobject.DisiplineLanguage;
 @Path("no.softwarecontrol.idoc.entityobject.disiplinelanguage")
 @RolesAllowed({"ApplicationRole"})
 public class DisiplineLanguageClientFacadeREST extends AbstractFacade<DisiplineLanguage> {
+
+
     public DisiplineLanguageClientFacadeREST() {
         super(DisiplineLanguage.class);
     }
@@ -27,8 +30,8 @@ public class DisiplineLanguageClientFacadeREST extends AbstractFacade<DisiplineL
     @Path("create/{disiplineId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("disiplineId") String disiplineId, DisiplineLanguage entity) {
-        DisiplineFacadeREST disiplineFacadeREST = new DisiplineFacadeREST();
-        Disipline disipline = disiplineFacadeREST.find(disiplineId);
+
+        Disipline disipline = DisiplineFacadeREST.getInstance().find(disiplineId);
         entity.setDisipline(disipline);
         super.create(entity);
     }

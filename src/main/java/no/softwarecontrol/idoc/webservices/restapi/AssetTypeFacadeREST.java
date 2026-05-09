@@ -23,10 +23,19 @@ import java.util.stream.Collectors;
 @RolesAllowed({"ApplicationRole"})
 public class AssetTypeFacadeREST extends AbstractFacade<AssetType> {
 
+    private static AssetTypeFacadeREST instance;
+
     public AssetTypeFacadeREST() {
         super(AssetType.class);
+        instance = this;
     }
 
+    public static AssetTypeFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new AssetTypeFacadeREST();
+        }
+        return instance;
+    }
     @Override
     protected String getSelectAllQuery(){
         return "AssetType.findAll";

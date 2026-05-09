@@ -25,9 +25,18 @@ import java.util.List;
 @Path("no.softwarecontrol.idoc.entityobject.disipline")
 @RolesAllowed({"ApplicationRole"})
 public class DisiplineFacadeREST extends AbstractFacade<Disipline> {
+    private static DisiplineFacadeREST instance;
 
     public DisiplineFacadeREST() {
         super(Disipline.class);
+        instance = this;
+    }
+
+    public static DisiplineFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new DisiplineFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -85,33 +94,42 @@ public class DisiplineFacadeREST extends AbstractFacade<Disipline> {
     }
 
     void linkToCompany(String companyId, String disiplineId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM company_has_disipline \n " +
-                            " WHERE company_company_id = ?1 AND disipline_disipline_id = ?2")
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            // Sjekk om linken allerede eksisterer
+            Number counter = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) 
+                FROM company_has_disipline
+                WHERE company_company_id = ?1 
+                  AND disipline_disipline_id = ?2
+                """)
                     .setParameter(1, companyId)
-                    .setParameter(2, disiplineId);
+                    .setParameter(2, disiplineId)
+                    .getSingleResult();
 
-            Number counter = (Number) query.getSingleResult();
             if (counter.intValue() == 0) {
-                tx.begin();
-                final int i = em.createNativeQuery(
-                                "INSERT INTO company_has_disipline (company_company_id, disipline_disipline_id)\n" +
-                                        "VALUES (?, ?);"
-                        ).setParameter(1, companyId)
-                        .setParameter(2, disiplineId)
-                        .executeUpdate();
-                tx.commit();
-            } else {
-                //System.out.println("No problem: company_has_project already exists");
+                EntityTransaction tx = em.getTransaction();
+                try {
+                    tx.begin();
+                    em.createNativeQuery("""
+                        INSERT INTO company_has_disipline (company_company_id, disipline_disipline_id)
+                        VALUES (?, ?)
+                        """)
+                            .setParameter(1, companyId)
+                            .setParameter(2, disiplineId)
+                            .executeUpdate();
+                    tx.commit();
+                } catch (Exception e) {
+                    if (tx.isActive()) {
+                        tx.rollback();
+                    }
+                    System.out.println("Exception while inserting into company_has_disipline");
+                    System.out.println("Company ID: " + companyId + ", Disipline ID: " + disiplineId);
+                    System.out.println("Error: " + e.getMessage());
+                    //throw new RuntimeException("Failed to link disipline to company", e);
+                }
             }
-        } catch (Exception exp) {
-            tx.rollback();
-            System.out.println("Exception while inserting into company_has_disipline: " + exp.getMessage());
-        } finally {
-            em.close();
-        }
+            // Link eksisterer allerede - ingen handling nødvendig
+        } // EntityManager lukkes automatisk her
     }
     
 }

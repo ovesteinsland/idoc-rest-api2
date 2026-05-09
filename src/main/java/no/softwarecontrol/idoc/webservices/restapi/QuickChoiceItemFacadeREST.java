@@ -29,11 +29,20 @@ import java.util.stream.Collectors;
 @Path("no.softwarecontrol.idoc.entityobject.quickchoiceitem")
 @RolesAllowed({"ApplicationRole"})
 public class QuickChoiceItemFacadeREST extends AbstractFacade<QuickChoiceItem> {
-    @EJB
-    private QuickChoiceGroupFacadeREST quickChoiceGroupFacadeREST = new QuickChoiceGroupFacadeREST();
+
+    private static QuickChoiceItemFacadeREST instance;
+
 
     public QuickChoiceItemFacadeREST() {
         super(QuickChoiceItem.class);
+        instance = this;
+    }
+
+    public static QuickChoiceItemFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new QuickChoiceItemFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -52,8 +61,7 @@ public class QuickChoiceItemFacadeREST extends AbstractFacade<QuickChoiceItem> {
     @Consumes({ MediaType.APPLICATION_JSON})
     @Path("createWithQuickChoiceGroup/{quickChoiceGroupId}")
     public void createWithQuickChoiceGroup(@PathParam("quickChoiceGroupId") String quickChoiceGroupId, QuickChoiceItem entity) {
-        QuickChoiceGroupFacadeREST quickChoiceGroupFacadeREST = new QuickChoiceGroupFacadeREST();
-        QuickChoiceGroup quickChoiceGroup = quickChoiceGroupFacadeREST.find(quickChoiceGroupId);
+        QuickChoiceGroup quickChoiceGroup = QuickChoiceGroupFacadeREST.getInstance().find(quickChoiceGroupId);
         if(quickChoiceGroup != null) {
             entity.setQuickChoiceGroup(quickChoiceGroup);
             super.create(entity);
@@ -89,12 +97,12 @@ public class QuickChoiceItemFacadeREST extends AbstractFacade<QuickChoiceItem> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToQuickChoiceGroup(@PathParam("parentId") String parentId, QuickChoiceItem entity) {
         QuickChoiceItem quickChoiceItem = this.find(entity.getQuickChoiceItemId());
-        QuickChoiceGroup quickChoiceGroup = quickChoiceGroupFacadeREST.find(parentId);
+        QuickChoiceGroup quickChoiceGroup = QuickChoiceGroupFacadeREST.getInstance().find(parentId);
         if (quickChoiceGroup != null && quickChoiceItem != null) {
             if (!quickChoiceGroup.getQuickChoiceItemList().contains(quickChoiceItem)) {
                 quickChoiceGroup.getQuickChoiceItemList().add(quickChoiceItem);
                 quickChoiceItem.setQuickChoiceGroup(quickChoiceGroup);
-                quickChoiceGroupFacadeREST.edit(quickChoiceGroup);
+                QuickChoiceGroupFacadeREST.getInstance().edit(quickChoiceGroup);
             }
             
             this.edit(quickChoiceItem);
@@ -114,12 +122,12 @@ public class QuickChoiceItemFacadeREST extends AbstractFacade<QuickChoiceItem> {
         return super.find(id);
     }
 
-    @GET
-    @Override
-    @Produces({ MediaType.APPLICATION_JSON})
-    public List<QuickChoiceItem> findAll() {
-        return super.findAll();
-    }
+//    @GET
+//    @Override
+//    @Produces({ MediaType.APPLICATION_JSON})
+//    public List<QuickChoiceItem> findAll() {
+//        return super.findAll();
+//    }
 
     @GET
     @Path("{from}/{to}")
@@ -132,76 +140,90 @@ public class QuickChoiceItemFacadeREST extends AbstractFacade<QuickChoiceItem> {
     @Path("queryFullText/{query}/{disiplineId}")
     @Produces({ MediaType.APPLICATION_JSON})
     public List<QuickChoiceItem> queryFullText(@PathParam("query") String queryString, @PathParam("disiplineId") String disiplineId) {
-
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
         try {
-            List<QuickChoiceItem> quickChoiceItems = new ArrayList<>();
-
             String urlSearchString = URLEncoder.encode(queryString, "UTF-8");
             urlSearchString = urlSearchString.replaceAll("\\+", "%20");
             urlSearchString = urlSearchString.replaceAll(" ", "%20");
             queryString += "*";
 
-            quickChoiceItems = (List<QuickChoiceItem>) em.createNativeQuery("SELECT * FROM quick_choice_item\n" +
-                            "JOIN quick_choice_group on quick_choice_item.quick_choice_group = quick_choice_group.quick_choice_group_id\n" +
-                            "WHERE MATCH (quick_choice_group.name) AGAINST (?1 IN BOOLEAN MODE)" +
-                            "        OR MATCH (quick_choice_item.name,full_text) AGAINST (?1 IN boolean mode) LIMIT 0,30;",
-                    QuickChoiceItem.class)
-                    .setParameter(1, queryString)
-                    .getResultList();
+            try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+                List<QuickChoiceItem> quickChoiceItems = (List<QuickChoiceItem>) em.createNativeQuery("""
+                    SELECT * FROM quick_choice_item
+                    JOIN quick_choice_group on quick_choice_item.quick_choice_group = quick_choice_group.quick_choice_group_id
+                    WHERE MATCH (quick_choice_group.name) AGAINST (?1 IN BOOLEAN MODE)
+                       OR MATCH (quick_choice_item.name,full_text) AGAINST (?1 IN BOOLEAN MODE)
+                    LIMIT 0,30
+                    """, QuickChoiceItem.class)
+                        .setParameter(1, queryString)
+                        .getResultList();
 
-            // filter away deleted from result
-            List<QuickChoiceItem> items = new ArrayList<>(quickChoiceItems);
-            em.close();
-            if(!items.isEmpty()){
-                QuickChoiceGroup root = items.get(0).getQuickChoiceGroup().getRoot();
-                /*List<QuickChoiceItem> filteredItems = items.stream().filter(
-                        r -> r.isDeleted() == false && r.getQuickChoiceGroup().getRoot().getDisipline().getDisiplineId().equals(disiplineId))
-                        .collect(Collectors.toList());*/
-                List<QuickChoiceItem> filteredItems = items.stream().filter(
-                        r -> r.isDeleted() == false /*&& r.getQuickChoiceGroup().getRoot().getDisipline().getDisiplineId().equals(disiplineId)*/)
-                        .collect(Collectors.toList());
-                return filteredItems;
-            } else {
-                return items;
+                // filter away deleted from result
+                List<QuickChoiceItem> items = new ArrayList<>(quickChoiceItems);
+
+                if (!items.isEmpty()) {
+                    QuickChoiceGroup root = items.get(0).getQuickChoiceGroup().getRoot();
+                    List<QuickChoiceItem> filteredItems = items.stream()
+                            .filter(r -> !r.isDeleted())
+                            .collect(Collectors.toList());
+                    return filteredItems;
+                } else {
+                    return items;
+                }
             }
-
         } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-            return new ArrayList<>();
-
-        } finally {
-            em.close();
+            System.out.println("Feil ved URL-encoding av søkestreng: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke utføre fulltekstsøk", e);
+        } catch (Exception e) {
+            System.out.println("Feil ved fulltekstsøk i quick choice items: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke utføre fulltekstsøk", e);
         }
     }
 
     @GET
     @Path("query/{query}")
     @Produces({ MediaType.APPLICATION_JSON})
+
     public List<QuickChoiceItem> query(@PathParam("query") String queryString) {
-        List<QuickChoiceItem> resultList = new ArrayList<>();
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        queryString = "%" + queryString + "%";
-        List<QuickChoiceItem> componentQueryList = (List<QuickChoiceItem>) em.createNativeQuery("SELECT *  \n"
-                        + "FROM quick_choice_item qci\n"
-                        + "JOIN key_component kc\n"
-                        + "    on qci.key_component = kc.key_component_id\n"
-                        + "JOIN key_fault kf\n"
-                        + "	on qci.key_fault = kf.key_fault_id\n"
-                        + "WHERE concat(kc.description,kf.description) LIKE ?1 OR qci.name LIKE ?1 LIMIT 0,20",
-                QuickChoiceItem.class)
-                .setParameter(1, queryString)
-                .getResultList();
-        List<QuickChoiceItem> qciQueryList = (List<QuickChoiceItem>) em.createNativeQuery("SELECT *  \n"
-                        + "FROM quick_choice_item qci\n"
-                        + "WHERE concat(qci.name,qci.full_text) LIKE ?1 LIMIT 0,20",
-                QuickChoiceItem.class)
-                .setParameter(1, queryString)
-                .getResultList();
-        em.close();
-        resultList.addAll(componentQueryList);
-        resultList.addAll(qciQueryList);
-        return resultList;
+
+            String searchString = "%" + queryString + "%";
+
+            try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+                // Bruk JPQL med JOIN FETCH for å unngå N+1
+                List<QuickChoiceItem> componentQueryList = em.createQuery("""
+                    SELECT DISTINCT qci FROM QuickChoiceItem qci
+                    LEFT JOIN FETCH qci.keyComponent kc
+                    LEFT JOIN FETCH qci.keyFault kf
+                    WHERE (CONCAT(COALESCE(kc.description, ''), COALESCE(kf.description, '')) LIKE :search)
+                       OR qci.name LIKE :search
+                    """, QuickChoiceItem.class)
+                        .setParameter("search", searchString)
+                        .setMaxResults(20)
+                        .getResultList();
+
+                List<QuickChoiceItem> qciQueryList = em.createQuery("""
+                    SELECT DISTINCT qci FROM QuickChoiceItem qci
+                    LEFT JOIN FETCH qci.keyComponent kc
+                    LEFT JOIN FETCH qci.keyFault kf
+                    WHERE (CONCAT(qci.name, COALESCE(qci.fullText, '')) LIKE :search)
+                    """, QuickChoiceItem.class)
+                        .setParameter("search", searchString)
+                        .setMaxResults(20)
+                        .getResultList();
+
+                // Slå sammen listene og fjern duplikater (hvis et element finnes i begge listene)
+                // Bruker LinkedHashSet for å bevare rekkefølgen til en viss grad
+                java.util.Set<QuickChoiceItem> resultSet = new java.util.LinkedHashSet<>();
+                resultSet.addAll(componentQueryList);
+                resultSet.addAll(qciQueryList);
+
+                return new ArrayList<>(resultSet);
+            } catch (Exception e) {
+            System.out.println("Feil ved søk i quick choice items: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke søke i quick choice items", e);
+        }
     }
 
     @GET

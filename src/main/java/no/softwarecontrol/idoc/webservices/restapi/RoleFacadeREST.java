@@ -16,8 +16,17 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class RoleFacadeREST extends AbstractFacade<Role> {
 
+    private static RoleFacadeREST instance;
     public RoleFacadeREST() {
         super(Role.class);
+        instance = this;
+    }
+
+    public static RoleFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new RoleFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -55,44 +64,57 @@ public class RoleFacadeREST extends AbstractFacade<Role> {
     @GET
     @Path("findByType/{type}")
     @Produces({ MediaType.APPLICATION_JSON})
+
     public List<Role> findByType(@PathParam("type") String type) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        type = type + "%";
-        List<Role> resultList = (List<Role>) em.createNativeQuery("SELECT "
-                        + "* FROM role r\n"
-                        + "WHERE r.role_type LIKE ?1",
-                Role.class)
-                .setParameter(1, type)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            type = type + "%";
+            List<Role> resultList = (List<Role>) em.createNativeQuery("""
+                SELECT * FROM role r
+                WHERE r.role_type LIKE ?1
+                """, Role.class)
+                    .setParameter(1, type)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved søk etter roller etter type: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke finne roller etter type", e);
+        }
     }
 
     @GET
     @Path("findByGroup/{group}")
     @Produces({ MediaType.APPLICATION_JSON})
     public List<Role> findByGroup(@PathParam("group") String group) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Role> resultList = (List<Role>) em.createNativeQuery("SELECT "
-                        + "* FROM role r\n"
-                        + "WHERE r.role_group = ?1",
-                Role.class)
-                .setParameter(1, group)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Role> resultList = (List<Role>) em.createNativeQuery("""
+                SELECT * FROM role r
+                WHERE r.role_group = ?1
+                """, Role.class)
+                    .setParameter(1, group)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved søk etter roller etter gruppe: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke finne roller etter gruppe", e);
+        }
     }
 
     @GET
     @Override
     @Produces({ MediaType.APPLICATION_JSON})
     public List<Role> findAll() {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Role> resultList = (List<Role>) em.createNativeQuery("SELECT "
-                        + "* FROM role r\n",
-                Role.class)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Role> resultList = (List<Role>) em.createNativeQuery("""
+                SELECT * FROM role r
+                """, Role.class)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved henting av alle roller: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke hente alle roller", e);
+        }
     }
 }

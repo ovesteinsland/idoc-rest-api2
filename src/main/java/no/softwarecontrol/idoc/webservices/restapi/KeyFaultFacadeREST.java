@@ -16,9 +16,17 @@ import java.util.List;
 @Path("no.softwarecontrol.idoc.entityobject.keyfault")
 @RolesAllowed({"ApplicationRole"})
 public class KeyFaultFacadeREST extends AbstractFacade<KeyFault>  {
-
+    private static KeyFaultFacadeREST instance;
     public KeyFaultFacadeREST() {
         super(KeyFault.class);
+        instance = this;
+    }
+
+    public static KeyFaultFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new KeyFaultFacadeREST();
+        }
+        return instance;
     }
 
     @Override

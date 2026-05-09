@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -23,6 +24,9 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class ConversationFacadeREST extends AbstractFacade<Conversation> {
 
+    @EJB
+    UserFacadeREST userFacadeREST;
+
     public ConversationFacadeREST() {
         super(Conversation.class);
     }
@@ -36,7 +40,6 @@ public class ConversationFacadeREST extends AbstractFacade<Conversation> {
     @Path("linkToUser/{userId}")
     @Consumes({ MediaType.APPLICATION_JSON})
     public void linkToUser(@PathParam("userId") String userId, Conversation entity) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
         Conversation conversation = find(entity.getConversationId());
         User user = userFacadeREST.find(userId);
         if(conversation != null && user != null){

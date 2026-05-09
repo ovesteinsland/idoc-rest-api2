@@ -2,6 +2,7 @@ package no.softwarecontrol.idoc.webservices.restapi;
 
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -12,6 +13,7 @@ import no.softwarecontrol.idoc.data.entityobject.KeyComponentLanguage;
 @Path("no.softwarecontrol.idoc.entityobject.keycomponentlanguage")
 @RolesAllowed({"ApplicationRole"})
 public class KeyComponentLanguageFacadeREST extends AbstractFacade<KeyComponentLanguage> {
+
 
     public KeyComponentLanguageFacadeREST() {
         super(KeyComponentLanguage.class);
@@ -26,8 +28,8 @@ public class KeyComponentLanguageFacadeREST extends AbstractFacade<KeyComponentL
     @Path("create/{keyComponentId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("keyComponentId") String keyComponentId, KeyComponentLanguage entity) {
-        KeyComponentFacadeREST keyComponentFacadeREST = new KeyComponentFacadeREST();
-        KeyComponent keyComponent = keyComponentFacadeREST.find(keyComponentId);
+
+        KeyComponent keyComponent = KeyComponentFacadeREST.getInstance().find(keyComponentId);
         entity.setKeyComponent(keyComponent);
         super.create(entity);
     }

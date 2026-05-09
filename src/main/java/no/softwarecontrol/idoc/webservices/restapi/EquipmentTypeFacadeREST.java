@@ -17,8 +17,18 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class EquipmentTypeFacadeREST extends AbstractFacade<EquipmentType>{
 
+    public static EquipmentTypeFacadeREST instance;
+
     public EquipmentTypeFacadeREST() {
         super(EquipmentType.class);
+        instance = this;
+    }
+
+    public static EquipmentTypeFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new EquipmentTypeFacadeREST();
+        }
+        return instance;
     }
 
     public EquipmentTypeFacadeREST(Class<EquipmentType> entityClass) {
@@ -64,17 +74,21 @@ public class EquipmentTypeFacadeREST extends AbstractFacade<EquipmentType>{
     @Path("findByCode/{code}")
     @Produces({ MediaType.APPLICATION_JSON})
     public EquipmentType findByCode(@PathParam("code") String code) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<EquipmentType> resultList = (List<EquipmentType>) em.createNativeQuery("SELECT "
-                        + "* FROM equipment_type o\n"
-                        + "WHERE o.ns_number = ?1",
-                EquipmentType.class)
-                .setParameter(1, code)
-                .getResultList();
-        em.close();
-        if (!resultList.isEmpty()) {
-            return resultList.get(0);
-        } else {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<EquipmentType> resultList = em.createNativeQuery("""
+                SELECT *
+                FROM equipment_type
+                WHERE ns_number = ?1
+                """,
+                            EquipmentType.class)
+                    .setParameter(1, code)
+                    .getResultList();
+
+            return resultList.isEmpty() ? null : resultList.get(0);
+
+        } catch (Exception e) {
+            System.out.println("Exception in findByCode for code: " + code);
+            System.out.println("Error: " + e.getMessage());
             return null;
         }
     }

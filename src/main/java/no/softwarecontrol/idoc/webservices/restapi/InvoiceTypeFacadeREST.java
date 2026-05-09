@@ -56,18 +56,18 @@ public class InvoiceTypeFacadeREST extends AbstractFacade<InvoiceType> {
         return super.find(id);
     }
 
-    @GET
-    @Override
-    @Produces({ MediaType.APPLICATION_JSON})
-    public List<InvoiceType> findAll() {
-        return super.findAll();
-    }
-    @GET
-    @Path("{from}/{to}")
-    @Produces({ MediaType.APPLICATION_JSON})
-    public List<InvoiceType> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
-        return super.findRange(new int[]{from, to});
-    }
+//    @GET
+//    @Override
+//    @Produces({ MediaType.APPLICATION_JSON})
+//    public List<InvoiceType> findAll() {
+//        return super.findAll();
+//    }
+//    @GET
+//    @Path("{from}/{to}")
+//    @Produces({ MediaType.APPLICATION_JSON})
+//    public List<InvoiceType> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
+//        return super.findRange(new int[]{from, to});
+//    }
 
     @GET
     @Path("count")

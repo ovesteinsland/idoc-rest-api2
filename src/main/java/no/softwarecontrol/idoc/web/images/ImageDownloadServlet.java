@@ -29,18 +29,18 @@ public class ImageDownloadServlet extends HttpServlet {
                 response.setContentType("image/png");
             }
 
-            file = "software-control/"+file;
+            file = "software-control/" + file;
             final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            if (MediaStorage.download(file, baos)) {
+            MediaStorage.download(file, baos);
 
-                OutputStream os = response.getOutputStream();
-                response.setContentLength(baos.size());
-                baos.writeTo(os);
-                os.flush();
+            OutputStream os = response.getOutputStream();
+            response.setContentLength(baos.size());
+            baos.writeTo(os);
+            os.flush();
 
-                baos.close();
-            }
-        } catch (IOException | GeneralSecurityException ioe) {
+            baos.close();
+
+        } catch (IOException ioe) {
             System.out.println("EXEPTION");
         }
     }

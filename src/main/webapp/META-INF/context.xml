@@ -1,0 +1,23 @@
+<Context>
+	<Resource name="jdbc/iDocDatabase"
+			  auth="Container"
+			  type="javax.sql.DataSource"
+			  factory="org.apache.tomcat.dbcp.dbcp2.BasicDataSourceFactory"
+			  driverClassName="com.mysql.cj.jdbc.Driver"
+			  url="jdbc:mysql://idoc2mai-cluster.cluster-chiyptfbnosz.eu-central-1.rds.amazonaws.com:3306/iDocDatabase?useSSL=true&amp;requireSSL=false&amp;serverTimezone=UTC&amp;zeroDateTimeBehavior=convertToNull"
+			  username="root"
+			  password="Ihadthisthing969906"
+			  maxTotal="20"
+			  maxIdle="10"
+			  minIdle="5"
+			  maxWaitMillis="30000"
+			  validationQuery="SELECT 1"
+			  testOnBorrow="true"
+			  testWhileIdle="true"
+			  timeBetweenEvictionRunsMillis="30000"
+			  removeAbandonedOnBorrow="true"
+			  removeAbandonedOnMaintenance="true"
+			  removeAbandonedTimeout="60"
+				logAbandoned="true"
+	/>
+</Context>

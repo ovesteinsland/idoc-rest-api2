@@ -19,6 +19,8 @@ public class AbstractJsonClient {
             //Declare the connection to weather api url
             URL url = new URL(uri);
             conn = (HttpURLConnection)url.openConnection();
+            conn.setConnectTimeout(5000);      // 5 sekunder for connect
+            conn.setReadTimeout(10000);
             conn.setRequestMethod("GET");
             conn.setRequestProperty("Accept", "application/json");
             //conn.setRequestProperty("apikey",apiKey);

@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -13,10 +14,21 @@ import no.softwarecontrol.idoc.data.entityobject.User;
 @RolesAllowed({"ApplicationRole"})
 public class CertificateFacadeREST extends AbstractFacade<Certificate>  {
 
+    private static CertificateFacadeREST instance;
+
+    //private final UserFacadeREST userFacadeREST = UserFacadeREST.getInstance();
+
     public CertificateFacadeREST() {
         super(Certificate.class);
+        instance = this;
     }
 
+    public static CertificateFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new CertificateFacadeREST();
+        }
+        return instance;
+    }
     @Override
     protected String getSelectAllQuery() {
         return null;
@@ -58,13 +70,12 @@ public class CertificateFacadeREST extends AbstractFacade<Certificate>  {
     @Path("linkToUser/{certificateId}/{userId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToCompany(@PathParam("certificateId") String certificateId, @PathParam("userId") String userId) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
-        User user = userFacadeREST.find(userId);
+        User user = UserFacadeREST.getInstance().find(userId);
         Certificate certificate = this.find(certificateId);
         if (user != null && certificate != null) {
             if (!user.getCertificateList().contains(certificate)) {
                 user.getCertificateList().add(certificate);
-                userFacadeREST.edit(user);
+                UserFacadeREST.getInstance().edit(user);
             }
             if (!certificate.getUserList().contains(user)) {
                 certificate.getUserList().add(user);

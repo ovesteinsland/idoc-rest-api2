@@ -15,8 +15,7 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class ReportParameterFacadeREST extends AbstractFacade<ReportParameter>{
 
-    @EJB
-    private ReportFacadeREST reportFacadeREST = new ReportFacadeREST();
+    private final ReportFacadeREST reportFacadeREST = ReportFacadeREST.getInstance();
 
     public ReportParameterFacadeREST() {
         super(ReportParameter.class);

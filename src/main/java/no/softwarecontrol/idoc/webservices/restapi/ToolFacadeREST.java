@@ -2,6 +2,7 @@ package no.softwarecontrol.idoc.webservices.restapi;
 
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -12,6 +13,7 @@ import no.softwarecontrol.idoc.data.entityobject.User;
 @Path("no.softwarecontrol.idoc.entityobject.tool")
 @RolesAllowed({"ApplicationRole"})
 public class ToolFacadeREST extends AbstractFacade<Tool>{
+
 
     public ToolFacadeREST() {
         super(Tool.class);
@@ -59,13 +61,12 @@ public class ToolFacadeREST extends AbstractFacade<Tool>{
     @Path("linkToUser/{certificateId}/{userId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToCompany(@PathParam("certificateId") String certificateId, @PathParam("userId") String userId) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
-        User user = userFacadeREST.find(userId);
+        User user = UserFacadeREST.getInstance().find(userId);
         Tool tool = this.find(certificateId);
         if (user != null && tool != null) {
             if (!user.getToolList().contains(tool)) {
                 user.getToolList().add(tool);
-                userFacadeREST.edit(user);
+                UserFacadeREST.getInstance().edit(user);
             }
             if (!tool.getUserList().contains(user)) {
                 tool.getUserList().add(user);

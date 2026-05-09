@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -13,6 +14,7 @@ import no.softwarecontrol.idoc.data.entityobject.ReportLanguage;
 @Path("no.softwarecontrol.idoc.entityobject.reportlanguage")
 @RolesAllowed({"ApplicationRole"})
 public class ReportLanguageFacadeREST extends AbstractFacade<ReportLanguage> {
+
 
     public ReportLanguageFacadeREST() {
         super(ReportLanguage.class);
@@ -27,8 +29,8 @@ public class ReportLanguageFacadeREST extends AbstractFacade<ReportLanguage> {
     @Path("create/{reportId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("reportId") String reportId, ReportLanguage entity) {
-        ReportFacadeREST reportFacadeREST = new ReportFacadeREST();
-        Report report = reportFacadeREST.find(reportId);
+
+        Report report = ReportFacadeREST.getInstance().find(reportId);
         entity.setReport(report);
         super.create(entity);
     }

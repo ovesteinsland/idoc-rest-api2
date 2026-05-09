@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -12,9 +13,20 @@ import no.softwarecontrol.idoc.data.entityobject.CheckListSection;
 @RolesAllowed({"ApplicationRole"})
 public class CheckListSectionFacadeREST extends AbstractFacade<CheckListSection> {
 
+    private static CheckListSectionFacadeREST instance;
+
     public CheckListSectionFacadeREST() {
         super(CheckListSection.class);
+        instance = this;
     }
+
+    public static CheckListSectionFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new CheckListSectionFacadeREST();
+        }
+        return instance;
+    }
+
 
     @Override
     protected String getSelectAllQuery() {
@@ -32,8 +44,8 @@ public class CheckListSectionFacadeREST extends AbstractFacade<CheckListSection>
     @Consumes({ MediaType.APPLICATION_JSON})
     @Path("createWithCheckList/{checkListId}")
     public void createWithCheckList(@PathParam("checkListId") String checkListSectionId, CheckListSection entity) {
-        CheckListFacadeREST checkListFacadeREST = new CheckListFacadeREST();
-        CheckList checkList = checkListFacadeREST.find(checkListSectionId);
+
+        CheckList checkList = CheckListFacadeREST.getInstance().find(checkListSectionId);
         if(checkList != null) {
             entity.setCheckList(checkList);
             super.create(entity);

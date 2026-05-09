@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -44,11 +45,10 @@ public class NotificationFacadeREST extends AbstractFacade<Notification> {
     @Path("createWithUsers/{fromUser}/{toUser}/{projectId}")
     @Consumes({ MediaType.APPLICATION_JSON})
     public void createWithUsers(@PathParam("fromUser") String fromUsername, @PathParam("toUser") String toUsername, @PathParam("projectId") String projectId, Notification entity) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-        User fromUser = userFacadeREST.find(fromUsername);
-        User toUser = userFacadeREST.find(toUsername);
-        Project project = projectFacadeREST.find(projectId);
+
+        User fromUser = UserFacadeREST.getInstance().find(fromUsername);
+        User toUser = UserFacadeREST.getInstance().find(toUsername);
+        Project project = ProjectFacadeREST.getInstance().find(projectId);
 
         entity.setFromUser(fromUser);
         entity.getUserList().add(toUser);

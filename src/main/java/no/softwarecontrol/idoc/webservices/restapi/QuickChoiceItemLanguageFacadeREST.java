@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -27,8 +28,8 @@ public class QuickChoiceItemLanguageFacadeREST extends AbstractFacade<QuickChoic
     @Path("create/{quickChoiceItemId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void create(@PathParam("quickChoiceItemId") String quickChoiceItemId, QuickChoiceItemLanguage entity) {
-        QuickChoiceItemFacadeREST quickChoiceItemFacadeREST = new QuickChoiceItemFacadeREST();
-        QuickChoiceItem quickChoiceItem = quickChoiceItemFacadeREST.find(quickChoiceItemId);
+
+        QuickChoiceItem quickChoiceItem = QuickChoiceItemFacadeREST.getInstance().find(quickChoiceItemId);
         entity.setQuickChoiceItem(quickChoiceItem);
         super.create(entity);
     }

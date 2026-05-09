@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
@@ -28,8 +29,18 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class LocationFacadeREST extends AbstractFacade<Location> {
 
+    public static LocationFacadeREST instance;
+
     public LocationFacadeREST() {
         super(Location.class);
+        instance = this;
+    }
+
+    public static LocationFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new LocationFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -49,8 +60,7 @@ public class LocationFacadeREST extends AbstractFacade<Location> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithAsset(@PathParam("assetId") String assetId, Location entity) {
         Location existing = this.find(entity.getLocationId());
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        Asset asset = assetFacadeREST.find(assetId);
+        Asset asset = AssetFacadeREST.getInstance().find(assetId);
         entity.setAsset(asset);
         if( existing == null) {
             for(Location loc:entity.getLocationList()){
@@ -59,7 +69,7 @@ public class LocationFacadeREST extends AbstractFacade<Location> {
             super.create(entity);
             if(!asset.getLocationList().contains(entity)) {
                 asset.getLocationList().add(entity);
-                assetFacadeREST.edit(asset.getAssetId(),asset);
+                AssetFacadeREST.getInstance().edit(asset.getAssetId(),asset);
             }
         } else {
             edit(entity.getLocationId(),entity);
@@ -101,10 +111,10 @@ public class LocationFacadeREST extends AbstractFacade<Location> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void edit(@PathParam("id") String id, Location entity) {
         Location existing = this.find(entity.getLocationId());
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
+
         if(existing != null) {
             if (existing.getAsset() != null) {
-                Asset asset = assetFacadeREST.find(existing.getAsset().getAssetId());
+                Asset asset = AssetFacadeREST.getInstance().find(existing.getAsset().getAssetId());
                 entity.setAsset(asset);
             } else {
                 if (existing.getParent() != null) {
@@ -123,81 +133,76 @@ public class LocationFacadeREST extends AbstractFacade<Location> {
     @Path("findByAsset/{assetId}")
     @Produces({ MediaType.APPLICATION_JSON})
     public List<Location> findByAsset(@PathParam("assetId") String assetId) {
-        /*AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        Asset asset = assetFacadeREST.find(assetId);
-        List<Location> locations = asset.getLocationList();*/
-
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Location> locations = (List<Location>) em.createNativeQuery("SELECT "
-                        + "* FROM location p\n"
-                        + "WHERE asset = ?1",
-                Location.class)
-                .setParameter(1, assetId)
-                .getResultList();
-        em.close();
-        return locations;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Location> locations = (List<Location>) em.createNativeQuery("""
+                            SELECT * FROM location p
+                            WHERE asset = ?1
+                            """,
+                            Location.class)
+                    .setParameter(1, assetId)
+                    .getResultList();
+            return locations;
+        } catch (Exception e) {
+            System.out.println("Exception while finding locations for assetId: " + assetId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find locations by asset", e);
+        }
     }
+
 
     @GET
     @Path("findByAssetFlatten/{assetId}")
     @Produces({ MediaType.APPLICATION_JSON})
     public List<Location> findByAssetFlatten(@PathParam("assetId") String assetId) {
-        /*AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        Asset asset = assetFacadeREST.find(assetId);
-        List<Location> locations = asset.getLocationList();*/
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Object[]> results = em.createNativeQuery("""
+                    SELECT l1.location_id, l1.name, l2.location_id, l2.name 
+                    FROM iDocDatabase.location l1
+                    JOIN location l2 ON l2.parent = l1.location_id
+                    WHERE l1.asset = ?1
+                    """)
+                    .setParameter(1, assetId)
+                    .getResultList();
 
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Object[]> results = em.createNativeQuery(
-                "SELECT l1.location_id,l1.name, l2.location_id, l2.name FROM iDocDatabase.location l1\n" +
-                        "JOIN location l2 on l2.parent = l1.location_id\n" +
-                        "where l1.asset = ?1")
-                .setParameter(1, assetId)
-                .getResultList();
-        em.close();
+            List<Location> flattens = new ArrayList<>();
+            Location locationL1 = null;
+            String previousL1Id = null;
+            for (int i = 0; i < results.size(); i++) {
+                if (locationL1 == null) {
+                    locationL1 = new Location();
+                    locationL1.setLocationId((String) results.get(i)[0]);
+                    locationL1.setName((String) results.get(i)[1]);
+                    flattens.add(locationL1);
+                    previousL1Id = locationL1.getLocationId();
+                }
+                if (!previousL1Id.equalsIgnoreCase((String)results.get(i)[0])) {
+                    locationL1 = new Location();
+                    locationL1.setLocationId((String) results.get(i)[0]);
+                    locationL1.setName((String) results.get(i)[1]);
+                    flattens.add(locationL1);
+                    previousL1Id = locationL1.getLocationId();
+                }
+                Location locationL2 = new Location();
+                locationL2.setLocationId((String) results.get(i)[2]);
+                locationL2.setName((String) results.get(i)[3]);
+                flattens.add(locationL2);
+            }
 
-        List<Location> flattens = new ArrayList<>();
-        Location locationL1 = null;
-        String previousL1Id = null;
-        for (int i = 0; i < results.size(); i++) {
-            if (locationL1 == null) {
-                locationL1 = new Location();
-                locationL1.setLocationId((String) results.get(i)[0]);
-                locationL1.setName((String) results.get(i)[1]);
-                flattens.add(locationL1);
-                previousL1Id = locationL1.getLocationId();
-            }
-            if (!previousL1Id.equalsIgnoreCase((String)results.get(i)[0])) {
-                locationL1 = new Location();
-                locationL1.setLocationId((String) results.get(i)[0]);
-                locationL1.setName((String) results.get(i)[1]);
-                flattens.add(locationL1);
-                previousL1Id = locationL1.getLocationId();
-            }
-            Location locationL2 = new Location();
-            locationL2.setLocationId((String) results.get(i)[2]);
-            locationL2.setName((String) results.get(i)[3]);
-            flattens.add(locationL2);
+            return flattens;
+        } catch (Exception e) {
+            System.out.println("Exception while finding flattened locations for assetId: " + assetId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find flattened locations by asset", e);
         }
-
-        return flattens;
     }
 
-    public List<Location> flattenLocations(Location parent) {
-        List<Location> flattens = new ArrayList<>();
-        for (Location location : parent.getLocationList()) {
-            flattens.add(location);
-            flattens.addAll(flattenLocations(location));
-            location.setLocationList(new ArrayList<>());
-        }
-        return flattens;
-    }
 
     @POST
     @Path("synchronizeWithAsset/{assetId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void synchronizeWithAsset(@PathParam("assetId") String assetId, Location entity) {
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        Asset asset = assetFacadeREST.find(assetId);
+
+        Asset asset = AssetFacadeREST.getInstance().find(assetId);
         for(Location loc:entity.getLocationList()){
             reconnectParent(entity,loc);
         }
@@ -210,7 +215,7 @@ public class LocationFacadeREST extends AbstractFacade<Location> {
         } else {
             super.edit(entity);
         }
-        assetFacadeREST.edit(asset);
+        AssetFacadeREST.getInstance().edit(asset);
     }
 
     @DELETE
@@ -228,18 +233,23 @@ public class LocationFacadeREST extends AbstractFacade<Location> {
     }
 
     public Location findNative(String id) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Location> resultList = (List<Location>) em.createNativeQuery("SELECT "
-                        + "* FROM location loc\n"
-                        + "WHERE loc.location_id = ?1",
-                Location.class)
-                .setParameter(1, id)
-                .getResultList();
-        em.close();
-        if(resultList.isEmpty()) {
-            return null;
-        } else {
-            return resultList.get(0);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Location> resultList = (List<Location>) em.createNativeQuery("""
+                            SELECT * FROM location loc
+                            WHERE loc.location_id = ?1
+                            """,
+                            Location.class)
+                    .setParameter(1, id)
+                    .getResultList();
+            if (resultList.isEmpty()) {
+                return null;
+            } else {
+                return resultList.get(0);
+            }
+        } catch (Exception e) {
+            System.out.println("Exception while finding location by id: " + id + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to find location", e);
         }
     }
 

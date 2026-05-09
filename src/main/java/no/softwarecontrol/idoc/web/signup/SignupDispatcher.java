@@ -33,7 +33,7 @@ public class SignupDispatcher implements ServletContextListener {
                 @Override
                 public void run() {
                     String threadName = Thread.currentThread().getName();
-                    while (true) {
+                    while (!Thread.currentThread().isInterrupted()) {
                         final ByteArrayOutputStream baos = new ByteArrayOutputStream();
                         SignupClient remoteClient;
 
@@ -73,7 +73,10 @@ public class SignupDispatcher implements ServletContextListener {
 
                             signupTask.execute();
                         } catch (InterruptedException e1) {
-                            throw new RuntimeException("Interrupted while waiting for remote clients");
+                            // Tråden har blitt avbrutt - tid for å avslutte
+                            Thread.currentThread().interrupt(); // Gjenopprett interrupted status
+                            System.out.println(threadName + " was interrupted, shutting down gracefully");
+                            break; // Avslutt løkken pent
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
@@ -91,10 +94,10 @@ public class SignupDispatcher implements ServletContextListener {
             executor.shutdown();
             executor.awaitTermination(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            System.err.println("tasks interrupted");
+            System.out.println("tasks interrupted");
         } finally {
             if (!executor.isTerminated()) {
-                System.err.println("cancel non-finished tasks");
+                System.out.println("cancel non-finished tasks");
             }
             executor.shutdownNow();
         }

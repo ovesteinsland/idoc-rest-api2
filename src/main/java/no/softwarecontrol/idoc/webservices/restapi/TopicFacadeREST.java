@@ -25,9 +25,9 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class TopicFacadeREST extends AbstractFacade<Topic> {
     @EJB
-    ConversationFacadeREST conversationFacadeREST = new ConversationFacadeREST();
+    ConversationFacadeREST conversationFacadeREST;
     @EJB
-    ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
+    ProjectFacadeREST projectFacadeREST;
 
     public TopicFacadeREST() {
         super(Topic.class);

@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
@@ -25,10 +26,20 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class ContractFacadeREST extends AbstractFacade<Contract> {
 
+    private static ContractFacadeREST instance;
 
     public ContractFacadeREST() {
         super(Contract.class);
+        instance = this;
     }
+
+    public static ContractFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new ContractFacadeREST();
+        }
+        return instance;
+    }
+
 
     @Override
     protected String getSelectAllQuery() {
@@ -54,16 +65,15 @@ public class ContractFacadeREST extends AbstractFacade<Contract> {
     public void remove(@PathParam("id") String id) {
         Contract contract = super.find(id);
         if (contract != null) {
-            CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
             Company company = contract.getCompany();
             if (company.getContractList().contains(contract)) {
                 company.getContractList().remove(contract);
-                companyFacadeREST.editInternal(company);
+                CompanyFacadeREST.getInstance().editInternal(company);
             }
             Company partner = contract.getPartner();
             if (partner.getContractList().contains(contract)) {
                 partner.getContractList().remove(contract);
-                companyFacadeREST.editInternal(partner);
+                CompanyFacadeREST.getInstance().editInternal(partner);
             }
             super.remove(contract);
         }
@@ -73,39 +83,43 @@ public class ContractFacadeREST extends AbstractFacade<Contract> {
     @Path("loadByCompany/{companyId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Contract> loadByCompany(@PathParam("companyId") String companyId) {
-        List<Contract> contracts = new ArrayList<>();
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-        contracts = (List<Contract>) em.createNativeQuery("SELECT "
-                        + "* FROM contract c\n"
-                        + "WHERE "
-                        + "c.company = ?1",
-                Contract.class)
-                .setParameter(1, companyId)
-                .getResultList();
-
-        em.close();
-        return contracts;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            return em.createNativeQuery("""
+                SELECT c.*
+                FROM contract c
+                WHERE c.company = ?1
+                """,
+                            Contract.class)
+                    .setParameter(1, companyId)
+                    .getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in loadByCompany for Company ID: " + companyId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     @GET
     @Path("loadByCompanyAndPartner/{companyId}/{partnerId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Contract> loadByCompanyAndPartner(@PathParam("companyId") String companyId, @PathParam("partnerId") String partnerId) {
-        List<Contract> contracts = new ArrayList<>();
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-        contracts = (List<Contract>) em.createNativeQuery("SELECT "
-                        + "* FROM contract c\n"
-                        + "WHERE "
-                        + "c.company = ?1 AND c.partner = ?2",
-                Contract.class)
-                .setParameter(1, companyId)
-                .setParameter(2, partnerId)
-                .getResultList();
-
-        em.close();
-        return contracts;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            return em.createNativeQuery("""
+                SELECT c.*
+                FROM contract c
+                WHERE c.company = ?1 
+                  AND c.partner = ?2
+                """,
+                            Contract.class)
+                    .setParameter(1, companyId)
+                    .setParameter(2, partnerId)
+                    .getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in loadByCompanyAndPartner");
+            System.out.println("Company ID: " + companyId + ", Partner ID: " + partnerId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
 
@@ -113,20 +127,23 @@ public class ContractFacadeREST extends AbstractFacade<Contract> {
     @Path("loadByPartner/{authorityId}/{partnerId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Contract> loadByPartner(@PathParam("authorityId") String authorityId, @PathParam("partnerId") String partnerId) {
-        List<Contract> contracts = new ArrayList<>();
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-        contracts = (List<Contract>) em.createNativeQuery("SELECT "
-                        + "* FROM contract c\n"
-                        + "WHERE "
-                        + "c.company = ?1 AND c.partner = ?2",
-                Contract.class)
-                .setParameter(1, authorityId)
-                .setParameter(2, partnerId)
-                .getResultList();
-
-        em.close();
-        return contracts;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            return em.createNativeQuery("""
+                SELECT c.*
+                FROM contract c
+                WHERE c.company = ?1 
+                  AND c.partner = ?2
+                """,
+                            Contract.class)
+                    .setParameter(1, authorityId)
+                    .setParameter(2, partnerId)
+                    .getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in loadByPartner");
+            System.out.println("Authority ID: " + authorityId + ", Partner ID: " + partnerId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     @GET
@@ -156,24 +173,6 @@ public class ContractFacadeREST extends AbstractFacade<Contract> {
     public String countREST() {
         return String.valueOf(super.count());
     }
-    
-    /*@PUT
-    @Path("createwithcompany")
-    @Consumes({ MediaType.APPLICATION_JSON})
-    public void createWithCompany(CompanyContractReference reference) {
-        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
-        Company partner = companyFacadeREST.find(reference.getPartnerId());
-        Company company = companyFacadeREST.find(reference.getCompanyId());
-        if(partner != null && company != null){
-            Contract contract = reference.getContract();
-            contract.setCompany(company);
-            contract.setPartner(partner);
-            company.getContractList().add(contract);
-            partner.getPartnerContracts().add(contract);
-            super.create(contract);
-            companyFacadeREST.edit(company);
-            companyFacadeREST.edit(partner);
-        }
-    }*/
+
 
 }

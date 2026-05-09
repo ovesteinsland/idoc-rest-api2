@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <title>Wheel of Fortune WebSocket Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        input, button { padding: 10px; margin: 5px; }
+        input { width: 300px; }
+        #log { background: #f0f0f0; padding: 15px; height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+        .connected { color: green; }
+        .disconnected { color: red; }
+        .message-in { color: blue; }
+        .message-out { color: purple; }
+        .error { color: red; font-weight: bold; }
+        .info { color: gray; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🎰 Wheel of Fortune WebSocket Test</h1>
+
+    <h3>Tilkoblingsparametere</h3>
+    <div>
+        <input type="text" id="serverUrl" placeholder="Server URL" value="ws://localhost:8080/idoc_rest_api2_war/wheeloffortune">
+        <br>
+        <input type="text" id="playerId" placeholder="Player ID (UUID)" value="">
+        <br>
+        <input type="text" id="partnerId" placeholder="Partner ID (UUID)" value="">
+        <br>
+        <input type="text" id="apiKey" placeholder="API Key" value="wheeloffortune-secret-key-2026">
+    </div>
+
+    <h3>Handlinger</h3>
+    <div>
+        <button onclick="connect()">🔗 Koble til</button>
+        <button onclick="disconnect()">❌ Koble fra</button>
+        <button onclick="generateUUIDs()">🎲 Generer UUIDs</button>
+        <button onclick="clearLog()">🧹 Tøm logg</button>
+    </div>
+
+    <h3>Send melding</h3>
+    <div>
+        <select id="messageType">
+            <option value="GAME_DATA">GAME_DATA</option>
+            <option value="STATUS">STATUS</option>
+        </select>
+        <input type="text" id="messagePayload" placeholder='Payload JSON, f.eks: {"action":"spin","value":500}' value='{"action":"spin","value":500}'>
+        <button onclick="sendMessage()">📤 Send</button>
+    </div>
+
+    <h3>Status: <span id="status" class="disconnected">Frakoblet</span></h3>
+
+    <h3>Logg</h3>
+    <div id="log"></div>
+</div>
+
+<script>
+    let socket = null;
+
+    function generateUUIDs() {
+        document.getElementById('playerId').value = "46d2db90-2a67-46c1-b947-382f63196bb3";
+        document.getElementById('partnerId').value = "4dc663de-d5d1-455a-92f9-09fcfd0005e4";
+        log('Genererte nye UUIDs', 'info');
+    }
+
+    function connect() {
+        const serverUrl = document.getElementById('serverUrl').value;
+        const playerId = document.getElementById('playerId').value;
+        const partnerId = document.getElementById('partnerId').value;
+        const apiKey = document.getElementById('apiKey').value;
+
+        if (!playerId || !partnerId) {
+            log('Feil: Du må fylle inn Player ID og Partner ID', 'error');
+            return;
+        }
+
+        const fullUrl = `${serverUrl}?playerId=${encodeURIComponent(playerId)}&partnerId=${encodeURIComponent(partnerId)}&apiKey=${encodeURIComponent(apiKey)}`;
+
+        log(`Kobler til: ${fullUrl}`, 'info');
+
+        try {
+            socket = new WebSocket(fullUrl);
+
+            socket.onopen = function(event) {
+                log('✅ Tilkoblet!', 'connected');
+                document.getElementById('status').textContent = 'Tilkoblet';
+                document.getElementById('status').className = 'connected';
+            };
+
+            socket.onmessage = function(event) {
+                log(`📥 Mottatt: ${event.data}`, 'message-in');
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'STATUS') {
+                        const partnerStatus = msg.payload.partnerConnected ? '🟢 Partner tilkoblet' : '🔴 Partner ikke tilkoblet';
+                        log(`   Status: ${partnerStatus}`, 'info');
+                    }
+                } catch (e) {
+                    // Ikke JSON, vis rå melding
+                }
+            };
+
+            socket.onclose = function(event) {
+                log(`🔌 Frakoblet (kode: ${event.code}, grunn: ${event.reason || 'ingen'})`, 'disconnected');
+                document.getElementById('status').textContent = 'Frakoblet';
+                document.getElementById('status').className = 'disconnected';
+                socket = null;
+            };
+
+            socket.onerror = function(error) {
+                log(`❌ Feil: ${error.message || 'Ukjent feil'}`, 'error');
+            };
+
+        } catch (e) {
+            log(`❌ Kunne ikke koble til: ${e.message}`, 'error');
+        }
+    }
+
+    function disconnect() {
+        if (socket) {
+            socket.close();
+            log('Frakoblet manuelt', 'info');
+        } else {
+            log('Ikke tilkoblet', 'error');
+        }
+    }
+
+    function sendMessage() {
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            log('Feil: Ikke tilkoblet', 'error');
+            return;
+        }
+
+        const messageType = document.getElementById('messageType').value;
+        const payloadText = document.getElementById('messagePayload').value;
+
+        let payload;
+        try {
+            payload = JSON.parse(payloadText);
+        } catch (e) {
+            log('Feil: Ugyldig JSON i payload', 'error');
+            return;
+        }
+
+        const message = {
+            type: messageType,
+            payload: payload,
+            timestamp: new Date().toISOString()
+        };
+
+        const jsonMessage = JSON.stringify(message);
+        socket.send(jsonMessage);
+        log(`📤 Sendt: ${jsonMessage}`, 'message-out');
+    }
+
+    function log(message, className) {
+        const logDiv = document.getElementById('log');
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        entry.className = className || '';
+        entry.textContent = `[${timestamp}] ${message}`;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function clearLog() {
+        document.getElementById('log').innerHTML = '';
+    }
+
+    // Generer UUIDs ved oppstart
+    generateUUIDs();
+</script>
+</body>
+</html>

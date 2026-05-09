@@ -21,9 +21,20 @@ public class CorsFilter implements Filter {
         // Cast request and response to HTTP-specific classes
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
+        // Debug logging
+        String uri = httpRequest.getRequestURI();
+
+        // Slipp gjennom WebSocket-forespørsler uten CORS-behandling
+        String upgradeHeader = httpRequest.getHeader("Upgrade");
+        if (upgradeHeader != null && upgradeHeader.equalsIgnoreCase("websocket")) {
+            System.out.println("=== CorsFilter: WebSocket upgrade detected, passing through ===");
+            chain.doFilter(request, response);
+            return;
+        }
 
         String[] allowedOrigins = {
                 "http://localhost:8181",
+                "http://localhost:8080",
                 "https://reportserver.idoc.no",
                 "https://wasm.idoc.no",
                 "https://api.thermidoc.com",
@@ -49,12 +60,15 @@ public class CorsFilter implements Filter {
         chain.doFilter(request, response);
     }
     private boolean isAllowedOrigin(String origin, String[] allowedOrigins) {
+        if (origin == null) {
+            return false;
+        }
         for (String allowedOrigin : allowedOrigins) {
             if (allowedOrigin.equalsIgnoreCase(origin)) {
                 return true;
             }
         }
-        return false;
+        return origin.matches("^https?://(localhost|127\\.0\\.0\\.1):\\d+$");
     }
 
     @Override

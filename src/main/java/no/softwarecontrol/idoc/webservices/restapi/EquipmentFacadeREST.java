@@ -8,8 +8,8 @@ package no.softwarecontrol.idoc.webservices.restapi;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
-import jakarta.persistence.ColumnResult;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
 import jakarta.persistence.Query;
@@ -32,8 +32,18 @@ import java.util.stream.Collectors;
 @RolesAllowed({"ApplicationRole"})
 public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
 
+    private static EquipmentFacadeREST instance;
+
     public EquipmentFacadeREST() {
         super(Equipment.class);
+        instance = this;
+    }
+
+    public static EquipmentFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new EquipmentFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -55,8 +65,7 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithAsset(@PathParam("assetId") String assetId, Equipment entity) {
         Equipment existing = findNative(entity.getEquipmentId());
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        MeasurementFacadeREST measurementFacadeREST = new MeasurementFacadeREST();
+
         List<Measurement> measurements = new ArrayList<>(entity.getMeasurementList());
         if (existing == null) {
             entity.setDeleted(false);
@@ -64,14 +73,14 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
             for (Equipment child : entity.getEquipmentList()) {
                 child.setParent(entity);
             }
-            Asset asset = assetFacadeREST.findNative(assetId);
+            Asset asset = AssetFacadeREST.getInstance().findNative(assetId);
             entity.setAsset(asset);
             entity.getMeasurementList().clear();
             super.create(entity);
 
             for (Measurement measurement : measurements) {
                 // Check if measurement already exists
-                Measurement existingMeasurement = measurementFacadeREST.find(measurement.getMeasurementId());
+                Measurement existingMeasurement = MeasurementFacadeREST.getInstance().find(measurement.getMeasurementId());
                 if (existingMeasurement == null) {
                     entity.getMeasurementList().add(measurement);
                     //edit(entity);
@@ -89,43 +98,24 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
         }
     }
 
-    private void setLocation(Equipment entity) {
-        LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
-        if (entity.getLocation() != null) {
-            Location location = locationFacadeREST.find(entity.getLocation().getLocationId());
-            if (location != null) {
-                entity.setLocation(location);
-//                if (!location.getEquipmentList().contains(entity)) {
-//                    location.getEquipmentList().add(entity);
-//                }
+    @POST
+    @Path("createWithAsset2/{assetId}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public void createWithAsset2(@PathParam("assetId") String assetId, Equipment entity) {
+        Equipment existing = findNative(entity.getEquipmentId());
+        if (existing == null) {
+            entity.setDeleted(false);
+            setEquipmentType(entity);
+            for (Equipment child : entity.getEquipmentList()) {
+                child.setParent(entity);
             }
-        }
-    }
-
-    private void setEquipmentType(Equipment entity) {
-        EquipmentTypeFacadeREST equipmentTypeFacadeREST = new EquipmentTypeFacadeREST();
-        if (entity.getEquipmentType() != null) {
-            EquipmentType equipmentType = equipmentTypeFacadeREST.find(entity.getEquipmentType().getEquipmentTypeId());
-            if (equipmentType == null) {
-                equipmentType = equipmentTypeFacadeREST.find("d0dd7761-0c29-4e3f-93a5-564d666c1510");
-            }
-            entity.setEquipmentType(equipmentType);
-        } else {
-
-            EquipmentType equipmentType = equipmentTypeFacadeREST.find("d0dd7761-0c29-4e3f-93a5-564d666c1510");
-            entity.setEquipmentType(equipmentType);
-        }
-    }
-
-    private void setAsset(Equipment entity, String assetId) {
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
-        Asset asset = assetFacadeREST.find(assetId);
-        if (asset != null) {
+            Asset asset = AssetFacadeREST.getInstance().findNative(assetId);
             entity.setAsset(asset);
-            if (!asset.getEquipmentList().contains(entity)) {
-                asset.getEquipmentList().add(entity);
-            }
-            assetFacadeREST.edit(asset.getAssetId(), asset);
+            setLocation(entity);
+            super.create(entity);
+        } else {
+            setAsset(entity, assetId);
+            edit(entity.getEquipmentId(), entity);
         }
     }
 
@@ -135,8 +125,7 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     public void createWithParent(@PathParam("parentId") String parentId, Equipment entity) {
         Equipment existing = findNative(entity.getEquipmentId());
         if (existing == null) {
-            EquipmentTypeFacadeREST equipmentTypeFacadeREST = new EquipmentTypeFacadeREST();
-            EquipmentType equipmentType = equipmentTypeFacadeREST.find(entity.getEquipmentType().getEquipmentTypeId());
+            EquipmentType equipmentType = EquipmentTypeFacadeREST.getInstance().find(entity.getEquipmentType().getEquipmentTypeId());
             entity.setEquipmentType(equipmentType);
             entity.setDeleted(false);
 
@@ -149,34 +138,80 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
         }
     }
 
-    public void linkMeasurement(String measurementId, String equipmentId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-        try {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM equipment_has_measurement \n " +
-                            " WHERE equipment_equipment_id = ?1 AND measurement_measurement_id = ?2")
-                    .setParameter(1, equipmentId)
-                    .setParameter(2, measurementId);
-
-            Number counter = (Number) query.getSingleResult();
-            if (counter.intValue() == 0) {
-                tx.begin();
-                final int i = em.createNativeQuery(
-                                "INSERT INTO equipment_has_measurement (equipment_equipment_id, measurement_measurement_id)\n" +
-                                        "VALUES (?, ?);"
-                        ).setParameter(1, equipmentId)
-                        .setParameter(2, measurementId)
-                        .executeUpdate();
-                tx.commit();
-            } else {
-                //System.out.println("No problem: equipment_has_measurement already exists");
+    private void setLocation(Equipment entity) {
+        if (entity.getLocation() != null) {
+            Location location = LocationFacadeREST.getInstance().find(entity.getLocation().getLocationId());
+            if (location != null) {
+                entity.setLocation(location);
+//                if (!location.getEquipmentList().contains(entity)) {
+//                    location.getEquipmentList().add(entity);
+//                }
             }
-        } catch (Exception exp) {
-            tx.rollback();
-            //System.out.println("Exception while inserting into equipment_has_measurement: " + exp.getMessage());
-        } finally {
-            em.close();
         }
+    }
+
+    private void setEquipmentType(Equipment entity) {
+        if (entity.getEquipmentType() != null) {
+            EquipmentType equipmentType = EquipmentTypeFacadeREST.getInstance().find(entity.getEquipmentType().getEquipmentTypeId());
+            if (equipmentType == null) {
+                equipmentType = EquipmentTypeFacadeREST.getInstance().find("d0dd7761-0c29-4e3f-93a5-564d666c1510");
+            }
+            entity.setEquipmentType(equipmentType);
+        } else {
+
+            EquipmentType equipmentType = EquipmentTypeFacadeREST.getInstance().find("d0dd7761-0c29-4e3f-93a5-564d666c1510");
+            entity.setEquipmentType(equipmentType);
+        }
+    }
+
+    private void setAsset(Equipment entity, String assetId) {
+        Asset asset = AssetFacadeREST.getInstance().find(assetId);
+        if (asset != null) {
+            entity.setAsset(asset);
+            if (!asset.getEquipmentList().contains(entity)) {
+                asset.getEquipmentList().add(entity);
+            }
+            AssetFacadeREST.getInstance().edit(asset.getAssetId(), asset);
+        }
+    }
+
+    public void linkMeasurement(String measurementId, String equipmentId) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            // Sjekk om linken allerede eksisterer
+            Number counter = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) 
+                FROM equipment_has_measurement
+                WHERE equipment_equipment_id = ?1 
+                  AND measurement_measurement_id = ?2
+                """)
+                    .setParameter(1, equipmentId)
+                    .setParameter(2, measurementId)
+                    .getSingleResult();
+
+            if (counter.intValue() == 0) {
+                EntityTransaction tx = em.getTransaction();
+                try {
+                    tx.begin();
+                    em.createNativeQuery("""
+                        INSERT INTO equipment_has_measurement (equipment_equipment_id, measurement_measurement_id)
+                        VALUES (?, ?)
+                        """)
+                            .setParameter(1, equipmentId)
+                            .setParameter(2, measurementId)
+                            .executeUpdate();
+                    tx.commit();
+                } catch (Exception e) {
+                    if (tx.isActive()) {
+                        tx.rollback();
+                    }
+                    System.out.println("Exception while inserting into equipment_has_measurement");
+                    System.out.println("Equipment ID: " + equipmentId + ", Measurement ID: " + measurementId);
+                    System.out.println("Error: " + e.getMessage());
+                    //throw new RuntimeException("Failed to link measurement to equipment", e);
+                }
+            }
+            // Link eksisterer allerede - ingen handling nødvendig
+        } // EntityManager lukkes automatisk her
     }
 
     @PUT
@@ -192,8 +227,7 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
                 }
             }
             if (entity.getLocation() != null) {
-                LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
-                Location location = locationFacadeREST.find(entity.getLocation().getLocationId());
+                Location location = LocationFacadeREST.getInstance().find(entity.getLocation().getLocationId());
                 if (location != null) {
                     equipment.setLocation(location);
                 }
@@ -213,13 +247,12 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
             super.edit(equipment);
 
             if (equipment.getLocation() != null) {
-                ObservationFacadeREST observationFacadeREST = new ObservationFacadeREST();
-                List<Observation> equipmentObservations = observationFacadeREST.findEquipmentObservationsNative(equipment.getEquipmentId());
+                List<Observation> equipmentObservations = ObservationFacadeREST.getInstance().findEquipmentObservationsNative(equipment.getEquipmentId());
                 for (Observation observation : equipmentObservations) {
                     if (observation.getEquipment() != null && observation.getLocation() != null && equipment.getLocation() != null) {
                         if (!observation.getLocation().getLocationId().equalsIgnoreCase(equipment.getLocation().getLocationId())) {
                             observation.setLocation(equipment.getLocation());
-                            observationFacadeREST.edit(observation);
+                            ObservationFacadeREST.getInstance().edit(observation);
                         }
                     }
                 }
@@ -239,15 +272,20 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     @Path("findByAsset/{assetId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Equipment> findByAsset(@PathParam("assetId") String assetId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Equipment> equipments = (List<Equipment>) em.createNativeQuery("SELECT "
-                                + "e.* FROM equipment e\n"
-                                + "WHERE e.asset = ?1",
-                        Equipment.class)
-                .setParameter(1, assetId)
-                .getResultList();
-        em.close();
-        return equipments;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            return em.createNativeQuery("""
+                SELECT e.*
+                FROM equipment e
+                WHERE e.asset = ?1
+                """,
+                            Equipment.class)
+                    .setParameter(1, assetId)
+                    .getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in findByAsset for Asset ID: " + assetId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     private String createSqlString(EquipmentRequestParameters parameters, Boolean isCounting) {
@@ -263,8 +301,7 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
         String assetId = "'" + parameters.entityIds.get(0) + "'";
         String disiplineId = null;
         if(projectId != null) {
-            ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-            Project project = projectFacadeREST.findNative(projectId);
+            Project project = ProjectFacadeREST.getInstance().findNative(projectId);
             if(project != null) {
                 if (project.getDisipline() != null) {
                     disiplineId = project.getDisipline().getDisiplineId();
@@ -414,23 +451,22 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
     public Integer countEquipments(EquipmentRequestParameters parameters) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        String sqlQuery = createSqlString(parameters, true);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            String sqlQuery = createSqlString(parameters, true);
+            Object result = em.createNativeQuery(sqlQuery).getSingleResult();
+            if (result instanceof Object[]) {
+                Object[] row = (Object[]) result;
+                if (row.length > 0 && row[0] instanceof Number) {
+                    return ((Number) row[0]).intValue();
+                }
+            }
 
-        Long equipmentCounter = 0L;
-        List<Object[]> results = em.createNativeQuery(sqlQuery)
-                .getResultList();
-        for (int i = 0; i < results.size(); i++) {
-            equipmentCounter = (Long) results.get(i)[0];
+            return 0;
+        } catch (Exception e) {
+            System.out.println("Exception in countEquipments");
+            System.out.println("Error: " + e.getMessage());
+            return 0;
         }
-//        Query queryCounter = em.createNativeQuery(sqlQuery);
-//        Number counterUnassigned = (Number) queryCounter.getSingleResult();
-//        Integer integerCounter = Integer.parseInt(counterUnassigned.toString());
-//
-//        em.close();
-//        return integerCounter;
-
-        return equipmentCounter.intValue();
     }
 
 
@@ -439,116 +475,136 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
     public List<Equipment> loadEquipments(EquipmentRequestParameters parameters) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        String queryString = createSqlString(parameters, false);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            String queryString = createSqlString(parameters, false);
+            List<Object[]> results = em.createNativeQuery(queryString, "EquipmentResultMapping")
+                    .getResultList();
 
-        List<Equipment> resultList = new ArrayList<>();
-        List<Object[]> results = em.createNativeQuery(queryString, "EquipmentResultMapping")
-                .getResultList();
-        String previousEquipment = "-XXX-";
-        Equipment equipment = null;
-        for (int i = 0; i < results.size(); i++) {
-            if (equipment == null) {
-                equipment = ((Equipment) results.get(i)[0]);
-                resultList.add(equipment);
-                previousEquipment = equipment.getEquipmentId();
-            }
-            if (!previousEquipment.equalsIgnoreCase(((Equipment) results.get(i)[0]).getEquipmentId())) {
-                equipment = ((Equipment) results.get(i)[0]);
-                resultList.add(equipment);
-                previousEquipment = equipment.getEquipmentId();
-            }
-            if (results.get(i)[1] != null && results.get(i)[3] != null) { // measurementObservation
-                Observation observation = new Observation();
-                observation.setObservationId((String) results.get(i)[1]);
-                Measurement measurement = new Measurement();
-                measurement.setValueType("CHOICE");
-                measurement.setMeasurementId((String) results.get(i)[3]);
-                measurement.setName((String) results.get(i)[4]);
-                measurement.setStringValue((String) results.get(i)[5]);
-                measurement.setValueDefault((String) results.get(i)[6]);
-                if(!observation.getMeasurementList().contains(measurement)) {
-                    observation.getMeasurementList().add(measurement);
-                }
-                if(!equipment.getMeasurementObservations().contains(observation)) {
-                    equipment.getMeasurementObservations().add(observation);
-                }
-            }
-            if (results.get(i)[7] != null) {
-                equipment.setPreviousObservationDate((Date) results.get(i)[7]);
-            }
-            if (results.get(i)[8] != null) {
-                equipment.setCurrentObservationDate((Date) results.get(i)[8]);
-            }
-            Long deviationCounter = (Long) results.get(i)[9];
-            Long observationCounter = (Long) results.get(i)[10];
-            if (deviationCounter != null) {
-                equipment.setDeviationCount(deviationCounter.intValue());
-            }
-            if (observationCounter != null) {
-                equipment.setObservationCount(observationCounter.intValue());
-            }
-            equipment.setLocationString((String) results.get(i)[12]);
-            equipment.setLocationId((String) results.get(i)[13]);
-            equipment.setEquipmentTypeId((String) results.get(i)[14]);
-            equipment.setNameString((String) results.get(i)[15]);
-            Long checkListCount = (Long) results.get(i)[16];
-            equipment.setCheckListCount(checkListCount.intValue());
+            List<Equipment> resultList = processEquipmentResults(results);
 
-        }
-        // Optimalisering av 850 kontrollpunkter tar nesten 2 minutter.
-        // Finn en bedre løsning
-//            for (Equipment equipment : resultList) {
-//                optimizeEquipment(equipment, parameters);
-//            }
-        if (parameters.searchString == null) {
-            if (parameters.showNeverControlled) {
-                List<Equipment> neverControlled = resultList.stream().filter(r ->
-                                r.getCurrentObservationDate() == null && r.getObservationCount() == 0)
+            // Filtrer for aldri kontrollert utstyr hvis spesifisert
+            if (parameters.searchString == null && parameters.showNeverControlled) {
+                resultList = resultList.stream()
+                        .filter(e -> e.getCurrentObservationDate() == null && e.getObservationCount() == 0)
                         .collect(Collectors.toList());
-                resultList = neverControlled;
             }
-//            else if (parameters.fromDate != null && parameters.toDate != null) {
-//                List<Equipment> intervalControlled = resultList.stream().filter(r -> {
-//                    if (!r.getOlderObservations().isEmpty()) {
-//                        return r.getOlderObservations().get(0).getCreatedDate().compareTo(parameters.fromDate) > 0
-//                                && r.getOlderObservations().get(0).getCreatedDate().compareTo(parameters.toDate) <= 0;
-//                    } else {
-//                        return false;
-//                    }
-//                }).collect(Collectors.toList());
-//                resultList = intervalControlled;
-//            }
-//            if (parameters.showOnlyControlled) {
-//                List<Equipment> filtered = resultList.stream().filter(r -> !r.getObservationList().isEmpty()).collect(Collectors.toList());
-//                resultList = filtered;
-//            } else if (parameters.hideControlled) {
-//                List<Equipment> filtered = resultList.stream().filter(r -> r.getObservationList().isEmpty()).collect(Collectors.toList());
-//                resultList = filtered;
-//            }
-//            if (parameters.showRelevant && parameters.projectId != null) {
-//                ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-//                Project project = projectFacadeREST.findOptimized(parameters.projectId);
-//                List<EquipmentType> relevantEquipmentTypes = project.getDisipline().getEquipmentTypeList();
-//                List<Equipment> relevantEquipments = resultList.stream().filter(r -> {
-//                    if (r.getEquipmentType() != null) {
-//                        return relevantEquipmentTypes.contains(r.getEquipmentType());
-//                    } else {
-//                        return false;
-//                    }
-//                }).collect(Collectors.toList());
-//                resultList = relevantEquipments;
-//            }
+
+            // Optimaliser resultatet
+            return optimizeEquipmentList(resultList);
+
+        } catch (Exception e) {
+            System.out.println("Exception in loadEquipments");
+            System.out.println("Error: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    private List<Equipment> processEquipmentResults(List<Object[]> results) {
+        List<Equipment> resultList = new ArrayList<>();
+        String previousEquipmentId = null;
+        Equipment currentEquipment = null;
+
+        for (Object[] row : results) {
+            Equipment equipment = (Equipment) row[0];
+            String equipmentId = equipment.getEquipmentId();
+
+            // Sjekk om dette er et nytt utstyr
+            if (!equipmentId.equals(previousEquipmentId)) {
+                currentEquipment = equipment;
+                resultList.add(currentEquipment);
+                previousEquipmentId = equipmentId;
+            }
+
+            // Behandle measurement observation
+            if (row[1] != null && row[3] != null) {
+                addMeasurementObservation(currentEquipment, row);
+            }
+
+            // Sett datoer
+            setEquipmentDates(currentEquipment, row);
+
+            // Sett tellere
+            setEquipmentCounters(currentEquipment, row);
+
+            // Sett andre felter
+            setEquipmentFields(currentEquipment, row);
         }
 
-        for (Equipment resultEquipment : resultList) {
-            resultEquipment.setObservationList(new ArrayList<>());
-            resultEquipment.setMeasurementList(new ArrayList<>());
-            resultEquipment.setEquipmentType(null);
-            resultEquipment.setLocation(null);
-            resultEquipment.setAsset(null);
-        }
         return resultList;
+    }
+
+    private void addMeasurementObservation(Equipment equipment, Object[] row) {
+        Observation observation = new Observation();
+        observation.setObservationId((String) row[1]);
+
+        Measurement measurement = new Measurement();
+        measurement.setValueType("CHOICE");
+        measurement.setMeasurementId((String) row[3]);
+        measurement.setName((String) row[4]);
+        measurement.setStringValue((String) row[5]);
+        measurement.setValueDefault((String) row[6]);
+
+        if (!observation.getMeasurementList().contains(measurement)) {
+            observation.getMeasurementList().add(measurement);
+        }
+
+        if (!equipment.getMeasurementObservations().contains(observation)) {
+            equipment.getMeasurementObservations().add(observation);
+        }
+    }
+
+    private void setEquipmentDates(Equipment equipment, Object[] row) {
+        // Previous observation date
+        if (row[7] != null) {
+            equipment.setPreviousObservationDate(convertToDate(row[7]));
+        }
+
+        // Current observation date
+        if (row[8] != null) {
+            equipment.setCurrentObservationDate(convertToDate(row[8]));
+        }
+    }
+
+    private Date convertToDate(Object dateObject) {
+        if (dateObject instanceof java.time.LocalDateTime) {
+            return java.sql.Timestamp.valueOf((java.time.LocalDateTime) dateObject);
+        } else if (dateObject instanceof Date) {
+            return (Date) dateObject;
+        }
+        return null;
+    }
+
+    private void setEquipmentCounters(Equipment equipment, Object[] row) {
+        if (row[9] != null) {
+            equipment.setDeviationCount(((Long) row[9]).intValue());
+        }
+
+        if (row[10] != null) {
+            equipment.setObservationCount(((Long) row[10]).intValue());
+        }
+
+        if (row[16] != null) {
+            equipment.setCheckListCount(((Long) row[16]).intValue());
+        }
+    }
+
+    private void setEquipmentFields(Equipment equipment, Object[] row) {
+        equipment.setLocationString((String) row[12]);
+        equipment.setLocationId((String) row[13]);
+        equipment.setEquipmentTypeId((String) row[14]);
+        equipment.setNameString((String) row[15]);
+    }
+
+    private List<Equipment> optimizeEquipmentList(List<Equipment> equipmentList) {
+        for (Equipment equipment : equipmentList) {
+            equipment.setObservationList(new ArrayList<>());
+            equipment.setMeasurementList(new ArrayList<>());
+            equipment.setEquipmentType(null);
+            equipment.setLocation(null);
+            equipment.setAsset(null);
+        }
+        return equipmentList;
     }
 
     private void optimizeEquipment(Equipment equipment, EquipmentRequestParameters parameters) {
@@ -669,33 +725,45 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     }
 
     public Equipment findNative(String id) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Equipment> resultList = (List<Equipment>) em.createNativeQuery("SELECT DISTINCT "
-                                + "* FROM equipment e\n"
-                                + "    left join equipment_has_measurement ehm on e.equipment_id = ehm.equipment_equipment_id\n"
-                                + "    left join measurement m on ehm.measurement_measurement_id = m.measurement_id\n"
-                                + "WHERE e.equipment_id = ?1",
-                        Equipment.class)
-                .setParameter(1, id)
-                .getResultList();
-        em.close();
-        if (!resultList.isEmpty()) {
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Equipment> resultList = em.createNativeQuery("""
+                SELECT DISTINCT e.*
+                FROM equipment e
+                LEFT JOIN equipment_has_measurement ehm ON e.equipment_id = ehm.equipment_equipment_id
+                LEFT JOIN measurement m ON ehm.measurement_measurement_id = m.measurement_id
+                WHERE e.equipment_id = ?1
+                """,
+                            Equipment.class)
+                    .setParameter(1, id)
+                    .getResultList();
+
+            if (resultList.isEmpty()) {
+                return null;
+            }
+
             Equipment equipment = resultList.get(0);
-            if(equipment.getLocation() != null) {
+
+            // Sett location-informasjon hvis tilgjengelig
+            if (equipment.getLocation() != null) {
                 equipment.setLocationString(equipment.getLocation().getFullName());
                 equipment.setLocationId(equipment.getLocation().getLocationId());
             }
+
             return equipment;
+
+        } catch (Exception e) {
+            System.out.println("Exception in findNative for Equipment ID: " + id);
+            System.out.println("Error: " + e.getMessage());
+            return null;
         }
-        return null;
     }
 
-    @GET
-    @Override
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<Equipment> findAll() {
-        return super.findAll();
-    }
+//    @GET
+//    @Override
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<Equipment> findAll() {
+//        return super.findAll();
+//    }
 
     @GET
     @Path("{from}/{to}")
@@ -709,21 +777,26 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     @Produces({MediaType.APPLICATION_JSON})
     //@Produces(MediaType.TEXT_PLAIN)
     public String countByEquipmentTypeAndAsset(@PathParam("equipmentTypeId") String equipmentTypeId, @PathParam("assetId") String assetId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        Query query = em.createNativeQuery(
-                        "SELECT count(e.equipment_id) " +
-                                "FROM " +
-                                "    equipment e " +
-                                "JOIN asset a ON e.asset = a.asset_id " +
-                                "WHERE\n" +
-                                "e.equipment_type = ?1 " +
-                                "AND a.asset_id = ?2 " +
-                                "AND a.deleted = 0")
-                .setParameter(1, equipmentTypeId)
-                .setParameter(2, assetId);
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            Number counter = (Number) em.createNativeQuery("""
+                SELECT COUNT(e.equipment_id)
+                FROM equipment e
+                JOIN asset a ON e.asset = a.asset_id
+                WHERE e.equipment_type = ?1 
+                  AND a.asset_id = ?2 
+                  AND e.deleted = 0
+                """)
+                    .setParameter(1, equipmentTypeId)
+                    .setParameter(2, assetId)
+                    .getSingleResult();
 
-        Number counter = (Number) query.getSingleResult();
-        return counter.toString();
+            return counter.toString();
+        } catch (Exception e) {
+            System.out.println("Exception in countByEquipmentTypeAndAsset");
+            System.out.println("Equipment Type ID: " + equipmentTypeId + ", Asset ID: " + assetId);
+            System.out.println("Error: " + e.getMessage());
+            return "0";
+        }
     }
 
     @GET
@@ -731,21 +804,24 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     @Produces({MediaType.APPLICATION_JSON})
     //@Produces(MediaType.TEXT_PLAIN)
     public List<Equipment> loadByEquipmentType(@PathParam("equipmentTypeId") String equipmentTypeId, @PathParam("assetId") String assetId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<Equipment> resultList = (List<Equipment>) em.createNativeQuery(
-                        "SELECT * " +
-                                "FROM " +
-                                "    equipment e " +
-                                "JOIN asset a ON e.asset = a.asset_id " +
-                                "WHERE\n" +
-                                "e.equipment_type = ?1 " +
-                                "AND a.asset_id = ?2 " +
-                                "AND a.deleted = 0", Equipment.class)
-                .setParameter(1, equipmentTypeId)
-                .setParameter(2, assetId)
-                .getResultList();
-
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            return em.createNativeQuery("""
+                SELECT e.*
+                FROM equipment e
+                WHERE e.equipment_type = ?1 
+                  AND e.asset = ?2 
+                  AND e.deleted = 0
+                """,
+                            Equipment.class)
+                    .setParameter(1, equipmentTypeId)
+                    .setParameter(2, assetId)
+                    .getResultList();
+        } catch (Exception e) {
+            System.out.println("Exception in loadByEquipmentType");
+            System.out.println("Equipment Type ID: " + equipmentTypeId + ", Asset ID: " + assetId);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     @GET
@@ -760,23 +836,39 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
     @Consumes({MediaType.APPLICATION_JSON})
     @Produces(MediaType.APPLICATION_JSON)
     public List<String> findMissing(List<String> equipmentIds) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-        List<String> missingIds = new ArrayList<>();
-        for (String equipmentId : equipmentIds) {
-            Query query = em.createNativeQuery("SELECT COUNT(*) FROM equipment e " +
-                            " WHERE e.equipment_id = ?1")
-                    .setParameter(1, equipmentId);
-
-            Number counter = (Number) query.getSingleResult();
-            int intCounter = Integer.parseInt(counter.toString());
-
-            if (intCounter == 0) {
-                missingIds.add(equipmentId);
-            }
+        if (equipmentIds == null || equipmentIds.isEmpty()) {
+            return new ArrayList<>();
         }
-        em.close();
 
-        return missingIds;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            // Bygg IN-klausul med parametere
+            String placeholders = equipmentIds.stream()
+                    .map(id -> "?")
+                    .collect(Collectors.joining(","));
+
+            String sql = "SELECT e.equipment_id FROM equipment e WHERE e.equipment_id IN (" + placeholders + ")";
+
+            Query query = em.createNativeQuery(sql);
+
+            // Sett alle parametere
+            for (int i = 0; i < equipmentIds.size(); i++) {
+                query.setParameter(i + 1, equipmentIds.get(i));
+            }
+
+            // Hent eksisterende ID-er
+            List<String> existingIds = query.getResultList();
+
+            // Returner ID-er som IKKE finnes
+            return equipmentIds.stream()
+                    .filter(id -> !existingIds.contains(id))
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            System.out.println("Exception in findMissing");
+            System.out.println("Equipment IDs count: " + equipmentIds.size());
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
 }

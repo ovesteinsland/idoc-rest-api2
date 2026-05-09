@@ -25,7 +25,7 @@ import java.util.List;
 public class ProjectGroupFacadeREST extends AbstractFacade<ProjectGroup> {
 
     @EJB
-    private ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
+    private ProjectFacadeREST projectFacadeREST;
 
     public ProjectGroupFacadeREST() {
         super(ProjectGroup.class);

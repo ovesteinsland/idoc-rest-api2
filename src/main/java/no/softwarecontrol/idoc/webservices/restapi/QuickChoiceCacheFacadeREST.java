@@ -2,6 +2,7 @@ package no.softwarecontrol.idoc.webservices.restapi;
 
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.servlet.ServletContext;
 import jakarta.ws.rs.*;
@@ -19,6 +20,9 @@ import java.util.stream.Collectors;
 @Path("no.softwarecontrol.idoc.entityobject.quickchoicecache")
 @RolesAllowed({"ApplicationRole"})
 public class QuickChoiceCacheFacadeREST {
+
+
+
 
     @Context
     ServletContext context;
@@ -72,8 +76,7 @@ public class QuickChoiceCacheFacadeREST {
     }
 
     private List<QuickChoiceCache> build() {
-        QuickChoiceGroupFacadeREST quickChoiceGroupFacadeREST = new QuickChoiceGroupFacadeREST();
-        List<QuickChoiceGroup> quickChoiceGroups = quickChoiceGroupFacadeREST.findRoot();
+        List<QuickChoiceGroup> quickChoiceGroups = QuickChoiceGroupFacadeREST.getInstance().findRoot();
         List<QuickChoiceCache> quickChoiceCacheList = new ArrayList<>();
         for (QuickChoiceGroup quickChoiceGroup : quickChoiceGroups) {
             QuickChoiceCache quickChoiceCache = new QuickChoiceCache(quickChoiceGroup);

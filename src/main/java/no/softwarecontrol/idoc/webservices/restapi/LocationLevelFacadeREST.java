@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -56,13 +57,12 @@ public class LocationLevelFacadeREST extends AbstractFacade<LocationLevel> {
     @Path("linkToAssetType/{assetTypeId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void linkToAssetType(@PathParam("assetTypeId") String assetTypeId, LocationLevel entity) {
-        AssetTypeFacadeREST assetTypeFacadeREST = new AssetTypeFacadeREST();
         LocationLevel locationLevel = this.find(entity.getLocationLevelId());
-        AssetType assetType = assetTypeFacadeREST.find(assetTypeId);
+        AssetType assetType = AssetTypeFacadeREST.getInstance().find(assetTypeId);
         if (assetType != null && locationLevel != null) {
             if (!assetType.getLocationLevelList().contains(locationLevel)) {
                 assetType.getLocationLevelList().add(locationLevel);
-                assetTypeFacadeREST.edit(assetType);
+                AssetTypeFacadeREST.getInstance().edit(assetType);
             }
             locationLevel.setAssetType(assetType);
             this.edit(locationLevel);

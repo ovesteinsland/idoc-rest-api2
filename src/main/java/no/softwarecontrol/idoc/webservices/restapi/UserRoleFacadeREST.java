@@ -1,6 +1,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.ws.rs.*;
@@ -18,8 +19,19 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class UserRoleFacadeREST extends AbstractFacade<UserRole> {
 
+    private static UserRoleFacadeREST instance;
+
+
     public UserRoleFacadeREST() {
         super(UserRole.class);
+        instance = this;
+    }
+
+    public static UserRoleFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new UserRoleFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -64,14 +76,11 @@ public class UserRoleFacadeREST extends AbstractFacade<UserRole> {
 
         List<UserRole> existingUserRoles = loadByProject(projectId, userId);
         if(existingUserRoles.isEmpty()) {
-            ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-            Project project = projectFacadeREST.find(projectId);
+            Project project = ProjectFacadeREST.getInstance().find(projectId);
 
-            UserFacadeREST userFacadeREST = new UserFacadeREST();
-            User user = userFacadeREST.find(userId);
+            User user = UserFacadeREST.getInstance().find(userId);
 
-            RoleFacadeREST roleFacadeREST = new RoleFacadeREST();
-            Role role = roleFacadeREST.find(roleId);
+            Role role = RoleFacadeREST.getInstance().find(roleId);
             entity.setRole(role);
             entity.setProject(project);
             entity.setUser(user);
@@ -81,8 +90,8 @@ public class UserRoleFacadeREST extends AbstractFacade<UserRole> {
             user.getUserRoleList().add(entity);
             //role.getUserRoleList().add(entity);
 
-            projectFacadeREST.editProjectOnly(projectId, project);
-            userFacadeREST.editPassword(userId, user);
+            ProjectFacadeREST.getInstance().editProjectOnly(projectId, project);
+            UserFacadeREST.getInstance().editPassword(userId, user);
         }
     }
 
@@ -91,20 +100,20 @@ public class UserRoleFacadeREST extends AbstractFacade<UserRole> {
     @Produces({MediaType.APPLICATION_JSON})
     public List<UserRole> loadByProject(@PathParam("projectId") String projectId,
                                         @PathParam("userId") String userId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-        List<UserRole> resultList = (List<UserRole>) em.createNativeQuery("SELECT "
-                        + "* FROM user_role ur\n"
-                        + "WHERE " +
-                        " ur.project = ?1 AND" +
-                        " ur.user = ?2",
-                UserRole.class)
-                .setParameter(1, projectId)
-                .setParameter(2, userId)
-                .getResultList();
-
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<UserRole> resultList = (List<UserRole>) em.createNativeQuery("""
+                SELECT * FROM user_role ur
+                WHERE ur.project = ?1 AND ur.user = ?2
+                """, UserRole.class)
+                    .setParameter(1, projectId)
+                    .setParameter(2, userId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Feil ved lasting av brukerroller for prosjekt: " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Kunne ikke laste brukerroller for prosjekt", e);
+        }
     }
 
 }

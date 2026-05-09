@@ -6,6 +6,7 @@
 package no.softwarecontrol.idoc.webservices.restapi;
 
 import jakarta.annotation.security.RolesAllowed;
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
@@ -26,9 +27,18 @@ import java.util.List;
 @RolesAllowed({"ApplicationRole"})
 public class ImageFacadeREST extends AbstractFacade<Media> {
 
+    private static ImageFacadeREST instance;
 
     public ImageFacadeREST() {
         super(Media.class);
+        instance = this;
+    }
+
+    public static ImageFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new ImageFacadeREST();
+        }
+        return instance;
     }
 
     @Override
@@ -47,14 +57,13 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     @Path("createWithAsset/{assetId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithAsset(@PathParam("assetId") String assetId, Media entity) {
-        AssetFacadeREST assetFacadeREST = new AssetFacadeREST();
         Media media = find(entity.getMediaId());
         if (media == null) {
             super.create(entity);
-            Asset asset = assetFacadeREST.find(assetId);
+            Asset asset = AssetFacadeREST.getInstance().find(assetId);
             asset.getImageList().add(entity);
             entity.getAssetList().add(asset);
-            assetFacadeREST.edit(asset);
+            AssetFacadeREST.getInstance().edit(asset);
         }
     }
 
@@ -62,14 +71,14 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     @Path("createWithLocation/{locationId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithLocation(@PathParam("locationId") String assetId, Media entity) {
-        LocationFacadeREST locationFacadeREST = new LocationFacadeREST();
+
         Media media = find(entity.getMediaId());
         if (media == null) {
             super.create(entity);
-            Location location = locationFacadeREST.find(assetId);
+            Location location = LocationFacadeREST.getInstance().find(assetId);
             location.getImageList().add(entity);
             entity.getLocationList().add(location);
-            locationFacadeREST.edit(location);
+            LocationFacadeREST.getInstance().edit(location);
         }
     }
 
@@ -78,15 +87,14 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithProject(@PathParam("projectId") String projectId, Media entity) {
         System.out.println("ImageFacadeREST.createWithProject: projectID = " + projectId + " imageId = " + entity.getMediaId());
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
         Media media = find(entity.getMediaId());
         if (media == null) {
             super.create(entity);
-            Project project = projectFacadeREST.find(projectId);
+            Project project = ProjectFacadeREST.getInstance().find(projectId);
             project.setModifiedDate(new Date());
             project.getImageList().add(entity);
             entity.getProjectList().add(project);
-            projectFacadeREST.editProjectOnly(project.getProjectId(), project);
+            ProjectFacadeREST.getInstance().editProjectOnly(project.getProjectId(), project);
         } else {
 
         }
@@ -97,14 +105,13 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     @Path("createWithCompany/{companyId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithCompany(@PathParam("companyId") String companyId, Media entity) {
-        CompanyFacadeREST companyFacadeREST = new CompanyFacadeREST();
         Media media = find(entity.getMediaId());
         if (media == null) {
             super.create(entity);
-            Company company = companyFacadeREST.find(companyId);
+            Company company = CompanyFacadeREST.getInstance().find(companyId);
             company.getImageList().add(entity);
             entity.getCompanyList().add(company);
-            companyFacadeREST.edit(company);
+            CompanyFacadeREST.getInstance().edit(company);
         }
     }
 
@@ -112,15 +119,14 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     @Path("createWithCertificate/{certificateId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithCertificate(@PathParam("certificateId") String certificateId, Media entity) {
-        System.out.println("ImageFacadeREST.createWithCertificate: certificateID = " + certificateId + " imageId = " + entity.getMediaId());
-        CertificateFacadeREST certificateFacadeREST = new CertificateFacadeREST();
+
         Media media = find(entity.getMediaId());
         if (media == null) {
             super.create(entity);
-            Certificate certificate = certificateFacadeREST.find(certificateId);
+            Certificate certificate = CertificateFacadeREST.getInstance().find(certificateId);
             certificate.getImageList().add(entity);
             entity.getCertificateList().add(certificate);
-            certificateFacadeREST.edit(certificate);
+            CertificateFacadeREST.getInstance().edit(certificate);
         }
         System.out.println("ImageFacadeREST.createWithCertificate: SUCCEEDED");
     }
@@ -129,31 +135,30 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     @Path("createWithQuickChoiceGroup/{quickChoiceGroupId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithQuickChoiceGroup(@PathParam("quickChoiceGroupId") String quickChoiceGroupId, Media entity) {
-        QuickChoiceGroupFacadeREST quickChoiceGroupFacadeREST = new QuickChoiceGroupFacadeREST();
         Media media = find(entity.getMediaId());
         if (media == null) {
             super.create(entity);
-            QuickChoiceGroup quickChoiceGroup = quickChoiceGroupFacadeREST.find(quickChoiceGroupId);
+            QuickChoiceGroup quickChoiceGroup = QuickChoiceGroupFacadeREST.getInstance().find(quickChoiceGroupId);
             quickChoiceGroup.getImageList().add(entity);
             entity.getQuickChoiceGroupList().add(quickChoiceGroup);
-            quickChoiceGroupFacadeREST.edit(quickChoiceGroup);
+            QuickChoiceGroupFacadeREST.getInstance().edit(quickChoiceGroup);
         }
     }
 
     @POST
     @Path("createWithObservation/{observationId}")
     @Consumes({MediaType.APPLICATION_JSON})
+
     public void createWithObservation(@PathParam("observationId") String observationId, Media entity) throws Exception {
-        ObservationFacadeREST observationFacadeREST = new ObservationFacadeREST();
         Media media = find(entity.getMediaId());
-        Observation observation = observationFacadeREST.find(observationId);
+        Observation observation = ObservationFacadeREST.getInstance().find(observationId);
         if (media == null) {
             if (observation != null) {
                 super.create(entity);
                 if (!observation.getImageList().contains(entity)) {
                     observation.getImageList().add(entity);
                     entity.getObservationList().add(observation);
-                    observationFacadeREST.edit(observation);
+                    ObservationFacadeREST.getInstance().edit(observation);
                     super.edit(entity);
                 }
             } else {
@@ -164,21 +169,18 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
                 if (!observation.getImageList().contains(media)) {
                     observation.getImageList().add(media);
                     media.getObservationList().add(observation);
-                    EntityManager em = LocalEntityManagerFactory.createEntityManager();
-                    try {
+                    try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
                         EntityTransaction tx = em.getTransaction();
                         tx.begin();
                         final int i = em.createNativeQuery(
-                                "INSERT INTO observation_has_image (observation, image)\n" +
-                                        "VALUES (?, ?);"
-                        ).setParameter(1, observation.getObservationId())
+                                        "INSERT INTO observation_has_image (observation, image)\n" +
+                                                "VALUES (?, ?);"
+                                ).setParameter(1, observation.getObservationId())
                                 .setParameter(2, media.getMediaId())
                                 .executeUpdate();
                         tx.commit();
                     } catch (Exception exp) {
                         System.out.println("Exception while inserting into observation_has_image: " + exp.getMessage());
-                    } finally {
-                        em.close();
                     }
                 }
             }
@@ -189,14 +191,13 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     @Path("createWithUser/{userId}")
     @Consumes({MediaType.APPLICATION_JSON})
     public void createWithUser(@PathParam("userId") String userId, Media entity) {
-        UserFacadeREST userFacadeREST = new UserFacadeREST();
         Media media = find(entity.getMediaId());
         if (media == null) {
             super.create(entity);
-            User user = userFacadeREST.find(userId);
+            User user = UserFacadeREST.getInstance().find(userId);
             user.getImageList().add(entity);
             entity.getUserList().add(user);
-            userFacadeREST.edit(user);
+            UserFacadeREST.getInstance().edit(user);
             super.edit(entity);
         }
     }
@@ -234,19 +235,19 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
         return super.find(id);
     }
 
-    @GET
-    @Override
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<Media> findAll() {
-        return super.findAll();
-    }
-
-    @GET
-    @Path("{from}/{to}")
-    @Produces({MediaType.APPLICATION_JSON})
-    public List<Media> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
-        return super.findRange(new int[]{from, to});
-    }
+//    @GET
+//    @Override
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<Media> findAll() {
+//        return super.findAll();
+//    }
+//
+//    @GET
+//    @Path("{from}/{to}")
+//    @Produces({MediaType.APPLICATION_JSON})
+//    public List<Media> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
+//        return super.findRange(new int[]{from, to});
+//    }
 
     @GET
     @Path("count")
@@ -259,8 +260,7 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     @Path("projectimages/{projectId}")
     @Produces({MediaType.APPLICATION_JSON})
     public List<Media> findProjectImages(@PathParam("projectId") String projectId) {
-        ProjectFacadeREST projectFacadeREST = new ProjectFacadeREST();
-        Project project = projectFacadeREST.find(projectId);
+        Project project = ProjectFacadeREST.getInstance().find(projectId);
         List<Media> images = project.getImageList();
         return images;
     }
@@ -273,27 +273,28 @@ public class ImageFacadeREST extends AbstractFacade<Media> {
     }
 
     private List<Media> findObservationImagesJPA(String observationId) {
-        ObservationFacadeREST observationFacadeREST = new ObservationFacadeREST();
-        Observation observation = observationFacadeREST.find(observationId);
+        Observation observation = ObservationFacadeREST.getInstance().find(observationId);
         List<Media> images = observation.getImageList();
         return images;
     }
 
     private List<Media> findObservationImagesNative(String observationId) {
-        EntityManager em = LocalEntityManagerFactory.createEntityManager();
-
-        List<Media> resultList = (List<Media>) em.createNativeQuery("SELECT "
-                        + "* FROM image i\n"
-                        + "JOIN observation_has_images ohi\n"
-                        + "	ON ohi.image = i.image_id\n"
-                        + "WHERE " +
-                        " ohi.observation = ?1",
-                Media.class)
-                .setParameter(1, observationId)
-                //.setParameter(3,null)
-                .getResultList();
-        em.close();
-        return resultList;
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            List<Media> resultList = (List<Media>) em.createNativeQuery("""
+                            SELECT * FROM image i
+                            JOIN observation_has_image ohi
+                            	ON ohi.image = i.image_id
+                            WHERE ohi.observation = ?1
+                            """,
+                            Media.class)
+                    .setParameter(1, observationId)
+                    .getResultList();
+            return resultList;
+        } catch (Exception e) {
+            System.out.println("Exception while fetching observation images for observationId: " + observationId + " - " + e.getMessage());
+            e.printStackTrace(System.err);
+            throw new RuntimeException("Failed to fetch observation images", e);
+        }
     }
 
 }

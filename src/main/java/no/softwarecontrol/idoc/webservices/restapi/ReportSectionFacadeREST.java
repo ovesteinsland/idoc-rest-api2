@@ -10,10 +10,13 @@ import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import no.softwarecontrol.idoc.data.entityobject.AssetType;
 import no.softwarecontrol.idoc.data.entityobject.Report;
 import no.softwarecontrol.idoc.data.entityobject.ReportSection;
+import no.softwarecontrol.idoc.data.entityobject.ReportSectionLanguage;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  *
@@ -23,33 +26,40 @@ import java.util.List;
 @Path("no.softwarecontrol.idoc.entityobject.reportsection")
 @RolesAllowed({"ApplicationRole"})
 public class ReportSectionFacadeREST extends AbstractFacade<ReportSection> {
+    private static ReportSectionFacadeREST instance;
 
-    @EJB
-    private ReportFacadeREST reportFacadeREST = new ReportFacadeREST();
 
     public ReportSectionFacadeREST() {
         super(ReportSection.class);
+        instance = this;
+    }
+
+    public static ReportSectionFacadeREST getInstance() {
+        if (instance == null) {
+            instance = new ReportSectionFacadeREST();
+        }
+        return instance;
     }
 
     @Override
-    protected String getSelectAllQuery(){
+    protected String getSelectAllQuery() {
         return "ReportSection.findAll";
     }
 
     @POST
     @Override
-    @Consumes({ MediaType.APPLICATION_JSON})
+    @Consumes({MediaType.APPLICATION_JSON})
     public void create(ReportSection entity) {
         super.create(entity);
         System.out.println("Report Section Created");
     }
 
     @POST
-    @Consumes({ MediaType.APPLICATION_JSON})
+    @Consumes({MediaType.APPLICATION_JSON})
     @Path("createWithReport/{reportId}")
     public void createWithReport(@PathParam("reportId") String reportId, ReportSection entity) {
-        Report report = reportFacadeREST.find(reportId);
-        if(report != null) {
+        Report report = ReportFacadeREST.getInstance().find(reportId);
+        if (report != null) {
             entity.setReport(report);
             create(entity);
         }
@@ -57,31 +67,39 @@ public class ReportSectionFacadeREST extends AbstractFacade<ReportSection> {
     }
 
     @PUT
-    @Path("{id}")
-    @Consumes({ MediaType.APPLICATION_JSON})
-    public void edit(@PathParam("id") String id, ReportSection entity) {
+    @Path("{languageCode}")
+    @Consumes({MediaType.APPLICATION_JSON})
+    public void edit(@PathParam("languageCode") String languageCode, ReportSection entity) {
         ReportSection reportSection = find(entity.getReportSectionId());
         reportSection.setTitle(entity.getTitle());
         reportSection.setBody(entity.getBody());
         reportSection.setIsHidden(entity.getIsHidden());
         reportSection.setIsIgnored(entity.getIsIgnored());
         reportSection.setSortIndex(entity.getSortIndex());
+        reportSection.setMasterSection(entity.getMasterSection());
+
+        List<ReportSectionLanguage> existingLanguages = reportSection.getReportSectionLanguageList().stream().filter(r -> r.getLanguageCode().equalsIgnoreCase(languageCode)).toList();
+        if (!existingLanguages.isEmpty()) {
+            existingLanguages.get(0).setTitle(reportSection.getTitle());
+            existingLanguages.get(0).setBody(reportSection.getBody());
+        }
+
         super.edit(reportSection);
     }
 
     @PUT
     @Path("linkToReport/{reportId}")
-    @Consumes({ MediaType.APPLICATION_JSON})
+    @Consumes({MediaType.APPLICATION_JSON})
     public void linkToReport(@PathParam("reportId") String reportId, ReportSection entity) {
         ReportSection reportSection = this.find(entity.getReportSectionId());
-        Report report = reportFacadeREST.find(reportId);
+        Report report = ReportFacadeREST.getInstance().find(reportId);
         if (reportSection != null && report != null) {
             if (!report.getReportSectionList().contains(reportSection)) {
                 report.getReportSectionList().add(reportSection);
             }
             reportSection.setReport(report);
             super.edit(reportSection);
-            reportFacadeREST.edit(report);
+            ReportFacadeREST.getInstance().edit(report);
         }
     }
 
@@ -93,21 +111,21 @@ public class ReportSectionFacadeREST extends AbstractFacade<ReportSection> {
 
     @GET
     @Path("{id}")
-    @Produces({ MediaType.APPLICATION_JSON})
+    @Produces({MediaType.APPLICATION_JSON})
     public ReportSection find(@PathParam("id") String id) {
         return super.find(id);
     }
 
     @GET
     @Override
-    @Produces({ MediaType.APPLICATION_JSON})
+    @Produces({MediaType.APPLICATION_JSON})
     public List<ReportSection> findAll() {
         return super.findAll();
     }
 
     @GET
     @Path("{from}/{to}")
-    @Produces({ MediaType.APPLICATION_JSON})
+    @Produces({MediaType.APPLICATION_JSON})
     public List<ReportSection> findRange(@PathParam("from") Integer from, @PathParam("to") Integer to) {
         return super.findRange(new int[]{from, to});
     }
