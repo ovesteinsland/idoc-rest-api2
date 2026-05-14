@@ -10,6 +10,7 @@ import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityTransaction;
+import jakarta.persistence.Query;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import no.softwarecontrol.idoc.data.entityhelper.*;
@@ -998,6 +999,230 @@ public class CompanyFacadeREST extends AbstractFacade<Company> {
         }
         return optimizedCompanies;
     }
+
+    /**
+     * Added 09. may 2026. for use in Compose
+     * Optimized even more than loadByAuthorityOptimized.
+     * Created a new version to avoid messing up old ios/flow.
+     * Even if it should work there as well. But you never know
+     * when messing up....
+     * @param id
+     * @param batchOffset
+     * @param batchSize
+     * @return
+     */
+
+    @GET
+    @Path("loadByAuthorityOptimized2/{companyid}/{batchOffset}/{batchSize}")
+    @Produces({MediaType.APPLICATION_JSON})
+    public List<Company> loadByAuthorityOptimized2(@PathParam("companyid") String id,
+                                                   @PathParam("batchOffset") String batchOffset,
+                                                   @PathParam("batchSize") String batchSize) {
+
+        try (EntityManager em = LocalEntityManagerFactory.createEntityManager()) {
+            int offset = Integer.parseInt(batchOffset);
+            int size = Integer.parseInt(batchSize);
+
+            // 1) Hent kun de feltene vi trenger fra company-tabellen
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = em.createNativeQuery("""
+                            SELECT DISTINCT
+                                customer.company_id,
+                                customer.name,
+                                customer.firstname,
+                                customer.lastname,
+                                customer.organization_number,
+                                customer.phone,
+                                customer.email,
+                                customer.web_site,
+                                customer.company_type,
+                                customer.default_language_code,
+                                customer.is_person_customer,
+                                customer.is_lite_account,
+                                customer.is_free_account,
+                                customer.demo,
+                                customer.deleted,
+                                customer.project_counter,
+                                customer.created_date,
+                                customer.expire_date
+                            FROM company c
+                            JOIN contract cont ON c.company_id = cont.company
+                            JOIN company customer ON cont.partner = customer.company_id
+                            WHERE c.company_id = ?1
+                            ORDER BY CONCAT(customer.name, customer.lastname, ', ', customer.firstname) COLLATE utf8mb4_danish_ci ASC
+                            LIMIT ?2 OFFSET ?3
+                            """)
+                    .setParameter(1, id)
+                    .setParameter(2, size)
+                    .setParameter(3, offset)
+                    .getResultList();
+
+            if (rows.isEmpty()) {
+                return new ArrayList<>();
+            }
+
+            // 2) Bygg lette Company-objekter (uten å gå via persistence context)
+            List<Company> result = new ArrayList<>(rows.size());
+            Map<String, Company> companyById = new LinkedHashMap<>(rows.size());
+
+            for (Object[] row : rows) {
+                Company company = new Company();
+                String companyId = (String) row[0];
+                company.setCompanyId(companyId);
+                company.setName((String) row[1]);
+                company.setFirstname((String) row[2]);
+                company.setLastname((String) row[3]);
+                company.setOrganizationNumber((String) row[4]);
+                company.setPhone((String) row[5]);
+                company.setEmail((String) row[6]);
+                company.setWebSite((String) row[7]);
+                company.setCompanyType((String) row[8]);
+                if (row[9] != null) {
+                    company.setDefaultLanguageCode((String) row[9]);
+                }
+                company.setIsPersonCustomer(toBoolean(row[10]));
+                company.setIsLiteAccount(toBoolean(row[11]));
+                company.setFreeAccount(toBoolean(row[12]));
+                company.setDemo(toBoolean(row[13]));
+                company.setDeleted(toBoolean(row[14]));
+                company.setProjectCounter(row[15] != null ? ((Number) row[15]).intValue() : 0);
+                company.setCreatedDate(toDate(row[16]));
+                company.setExpireDate(toDate(row[17]));
+
+                // Initialiser tomme lister så JSON-serialisering ikke trigger lazy loading
+                company.setImageList(new ArrayList<>());
+                company.setUserList(new ArrayList<>());
+                company.setAddressList(new ArrayList<>());
+                company.setAssetList(new ArrayList<>());
+                company.setAssetGroupList(new ArrayList<>());
+                company.setProjectList(new ArrayList<>());
+                company.setContractList(new ArrayList<>());
+                company.setPartnerContracts(new ArrayList<>());
+                company.setDisiplineList(new ArrayList<>());
+                company.setDeviationList(new ArrayList<>());
+                company.setReportList(new ArrayList<>());
+                company.setInvoiceList(new ArrayList<>());
+                company.setIntegrationList(new ArrayList<>());
+                company.setLanguageList(new ArrayList<>());
+                company.setUserRoleList(new ArrayList<>());
+                company.setParameterList(new ArrayList<>());
+
+                companyById.put(companyId, company);
+                result.add(company);
+            }
+
+            // ... existing code ...
+            // 3) Hent ALLE bilder for disse selskapene i én batch-spørring.
+            //    Vi tar med alle skalarfelter fra image-tabellen (alt utenom relasjoner).
+            //    EclipseLink + native query støtter ikke kolleksjons-ekspandering av
+            //    navngitte parametere, så vi bygger IN-listen med posisjonsparametere.
+            List<String> companyIdList = new ArrayList<>(companyById.keySet());
+            String placeholders = companyIdList.stream()
+                    .map(x -> "?")
+                    .collect(Collectors.joining(", "));
+
+            String mediaSql = """
+                    SELECT
+                        chi.company        AS company_id,
+                        img.image_id,
+                        img.deleted,
+                        img.name,
+                        img.original_name,
+                        img.url_small,
+                        img.url_medium,
+                        img.url_large,
+                        img.media_type,
+                        img.media_purpose,
+                        img.flir_configuration,
+                        img.order_index
+                    FROM company_has_image chi
+                    JOIN image img ON img.image_id = chi.image
+                    WHERE chi.company IN (%s)
+                    ORDER BY chi.company, img.order_index
+                    """.formatted(placeholders);
+
+            Query mediaQuery = em.createNativeQuery(mediaSql);
+            for (int i = 0; i < companyIdList.size(); i++) {
+                mediaQuery.setParameter(i + 1, companyIdList.get(i));
+            }
+
+            @SuppressWarnings("unchecked")
+            List<Object[]> mediaRows = mediaQuery.getResultList();
+
+            // 4) Distribuer Media-objektene til riktig Company
+            for (Object[] r : mediaRows) {
+                String companyId = (String) r[0];
+                Company company = companyById.get(companyId);
+                if (company == null) {
+                    continue;
+                }
+
+                Media media = new Media();
+                media.setMediaId((String) r[1]);
+                media.setDeleted(toBoolean(r[2]));
+                media.setName((String) r[3]);
+                media.setOriginalName((String) r[4]);
+                media.setUrlSmall((String) r[5]);
+                media.setUrlMedium((String) r[6]);
+                media.setUrlLarge((String) r[7]);
+                media.setMediaType((String) r[8]);
+                media.setMediaPurpose((String) r[9]);
+                media.setFlirConfiguration((String) r[10]);
+                media.setOrderIndex(r[11] != null ? ((Number) r[11]).intValue() : null);
+
+                company.getImageList().add(media);
+            }
+
+            return result;
+// ... existing code ...
+        } catch (NumberFormatException e) {
+            System.out.println("Invalid batch parameters for loadByAuthorityOptimized2");
+            System.out.println("Company ID: " + id + ", offset: " + batchOffset + ", size: " + batchSize);
+            System.out.println("Error: " + e.getMessage());
+            return new ArrayList<>();
+        } catch (Exception e) {
+            System.out.println("Exception in loadByAuthorityOptimized2 for Company ID: " + id);
+            System.out.println("Error: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Trygg konvertering av JDBC-verdier til Boolean.
+     * Håndterer Boolean (MySQL tinyint(1) via moderne Connector/J),
+     * Number (eldre drivere) og String ("1"/"0"/"true"/"false").
+     */
+    private static Boolean toBoolean(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof Number n) {
+            return n.intValue() != 0;
+        }
+        if (value instanceof String s) {
+            return "1".equals(s) || "true".equalsIgnoreCase(s);
+        }
+        return false;
+    }
+
+    /**
+     * Trygg konvertering av JDBC-verdier til Date.
+     * Håndterer java.sql.Timestamp, java.sql.Date og java.util.Date.
+     */
+    private static Date toDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Date d) {
+            return new Date(d.getTime());
+        }
+        return null;
+    }
+// ... existing code ...
 
     @GET
     @Path("countByAuthority/{authorityId}")

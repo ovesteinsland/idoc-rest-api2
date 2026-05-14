@@ -277,6 +277,7 @@ public class UserFacadeREST extends AbstractFacade<User> {
             user.setAuthority(entity.getAuthority());
             user.setLicence(entity.getLicence());
             user.setPreferenceJson(entity.getPreferenceJson());
+            user.setPreferenceCompose(entity.getPreferenceCompose());
             user.setSub(entity.getSub());
             if (!entity.getIntegrationList().isEmpty()) {
                 user.setIntegrationList(entity.getIntegrationList());

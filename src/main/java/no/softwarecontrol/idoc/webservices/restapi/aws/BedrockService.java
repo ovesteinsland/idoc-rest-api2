@@ -7,8 +7,7 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.ejb.Stateless;
 import jakarta.ws.rs.*;
 import no.softwarecontrol.idoc.data.entityobject.*;
-import no.softwarecontrol.idoc.webservices.data.bedrock.BedrockObservationTextResponse;
-import no.softwarecontrol.idoc.webservices.data.bedrock.BedrockRequest;
+import no.softwarecontrol.idoc.webservices.data.bedrock.*;
 import no.softwarecontrol.idoc.webservices.restapi.ProjectFacadeREST;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.SdkBytes;
@@ -18,8 +17,21 @@ import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.StreamingOutput;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
+import software.amazon.awssdk.services.bedrockruntime.model.*;
+import software.amazon.awssdk.services.bedrockruntime.model.Message;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 
 @Stateless
 @Path("no.softwarecontrol.idoc.aws.bedrock")
@@ -27,13 +39,23 @@ import java.util.Map;
 public class BedrockService {
     private DefaultAwsRegionProviderChain regionProvider = DefaultAwsRegionProviderChain.builder().build();
     private BedrockRuntimeClient bedrockClient;
+    private BedrockRuntimeAsyncClient bedrockAsyncClient;
     private ObjectMapper objectMapper;
 
     private static final double HAIKU_INPUT_COST_PER_TOKEN = 0.25 / 1_000_000;   // $0.25 per 1M tokens
     private static final double HAIKU_OUTPUT_COST_PER_TOKEN = 1.25 / 1_000_000;   // $1.25 per 1M tokens
+    private static final double SONNET_INPUT_COST_PER_TOKEN  = 3.0  / 1_000_000;
+    private static final double SONNET_OUTPUT_COST_PER_TOKEN = 15.0 / 1_000_000;
+
+    //private static final String MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
+    private static final String MODEL_ID = "eu.anthropic.claude-sonnet-4-6";
 
     public BedrockService() {
         bedrockClient = BedrockRuntimeClient.builder()
+                .region(Region.EU_CENTRAL_1)
+                .credentialsProvider(DefaultCredentialsProvider.create())
+                .build();
+        bedrockAsyncClient = BedrockRuntimeAsyncClient.builder()   // ← initialiser
                 .region(Region.EU_CENTRAL_1)
                 .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
@@ -57,6 +79,7 @@ public class BedrockService {
                 .body(SdkBytes.fromUtf8String(requestBody))
                 .build();
     }
+
 
     @POST
     @Path("generateObservationDescription")
@@ -105,6 +128,7 @@ public class BedrockService {
 
                             "IMPORTANT:\n" +
                             "- Refer ONLY to regulations and standards that actually apply in country \"%s\".\n" +
+                            "- The receiver of the text is a house owner, not an electrician\n" +
                             "- Be aware of the fact that the installation might have been acccording to regulations at the time the installation was built.\n " +
                             "- Be precise with section and clause references.\n" +
                             "- Do not claim illegal installation, unless you are absolutely sure.\n" +
@@ -173,16 +197,18 @@ public class BedrockService {
                             "REQUIREMENTS:\n" +
                             "- Write the entire response in the language identified by ISO 639-1 code \"%s\".\n" +
                             "- The tone of the response must be %s\n" +
+                            "- The receiver of the text is a house owner, not an electrician\n" +
                             "- Describe concretely what remediation work has been performed to rectify the deviation.\n" +
                             "- The text should read as a confirmation that the work has been completed.\n" +
-                            "- Do NOT repeat everything in the devation description, since it will be presented together with this response.\n" +
-                            "- Keep it very short, concise and factual. Max 1000 characters in response.\n\n" +
+                            "- Do NOT repeat everything in the deviation description, since it will be presented together with this response.\n" +
+                            " - I repeat. DO NOT REPEAT regulation references if it is included in this promt\n\n" +
+                            " - Keep it very short, concise and factual. Max 500 characters in response.\n\n" +
 
                             "FORMATTING:\n" +
                             "Respond in the following structure:\n" +
                             "IMPROVEMENT_DESCRIPTION:\n <description of remediation work performed>\n" +
 
-                            "- The text should be written from the perspective of the technician who performed the remediation.\n",
+                            "- The text should be written from the perspective of the technician who performed the remediation\n",
                     countryCode, deviationDescription, languageCode, tone.getPromptInstruction()
             );
 
@@ -370,5 +396,98 @@ public class BedrockService {
             }
         }
         return builder.toString();
+    }
+
+
+    @POST
+    @Path("chat")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("text/event-stream")
+    public Response chat(ChatRequest chatRequest) {
+
+        List<Message> bedrockMessages = buildBedrockMessages(chatRequest.getMessages());
+
+        ConverseStreamRequest.Builder requestBuilder = ConverseStreamRequest.builder()
+                .modelId(MODEL_ID)
+                .messages(bedrockMessages)
+                .inferenceConfig(InferenceConfiguration.builder()
+                        .maxTokens(2048)
+                        .temperature(0.7f)
+                        .build());
+
+        if (chatRequest.getSystemPrompt() != null && !chatRequest.getSystemPrompt().isBlank()) {
+            requestBuilder.system(
+                    SystemContentBlock.fromText(chatRequest.getSystemPrompt())
+            );
+        }
+
+        ConverseStreamRequest bedrockRequest = requestBuilder.build();
+
+        StreamingOutput streamingOutput = outputStream -> {
+            StringBuilder debugBuffer = new StringBuilder();
+            try {
+                bedrockAsyncClient.converseStream(bedrockRequest,
+                        ConverseStreamResponseHandler.builder()
+                                .subscriber(ConverseStreamResponseHandler.Visitor.builder()
+                                        .onContentBlockDelta(event -> {
+                                            ContentBlockDelta delta = event.delta();
+                                            if (delta.text() != null) {
+                                                debugBuffer.append(delta.text());
+                                                writeSseChunk(outputStream, delta.text());
+                                            }
+                                        })
+                                        .onMessageStop(event -> {
+                                            System.out.println("=== RAW MARKDOWN DEBUG START ===");
+                                            System.out.println(debugBuffer.toString());
+                                            System.out.println("=== RAW MARKDOWN DEBUG END ===");
+                                            writeSseChunk(outputStream, "[DONE]");
+                                                }
+                                        )
+                                        .build())
+                                .onError(throwable -> {
+                                    writeSseChunk(outputStream, "[DONE]");
+                                    throw new RuntimeException("Bedrock stream-feil: " + throwable.getMessage(), throwable);
+                                })
+                                .build()
+                ).join();
+            } catch (Exception e) {
+                writeSseChunk(outputStream, "[DONE]");
+                throw new RuntimeException("Feil under chat-streaming: " + e.getMessage(), e);
+            }
+        };
+
+        return Response.ok(streamingOutput)
+                .header("Content-Type", "text/event-stream")
+                .header("Cache-Control", "no-cache")
+                .header("Connection", "keep-alive")
+                .header("X-Accel-Buffering", "no")
+                .build();
+    }
+
+
+    private List<Message> buildBedrockMessages(List<ChatMessage> chatMessages) {
+        List<Message> messages = new ArrayList<>();
+        for (ChatMessage chatMessage : chatMessages) {
+            ConversationRole role = "assistant".equalsIgnoreCase(chatMessage.getRole())
+                    ? ConversationRole.ASSISTANT
+                    : ConversationRole.USER;
+
+            Message message = Message.builder()
+                    .role(role)
+                    .content(ContentBlock.fromText(chatMessage.getContent()))
+                    .build();
+            messages.add(message);
+        }
+        return messages;
+    }
+
+    private void writeSseChunk(OutputStream outputStream, String data) {
+        try {
+            String sseEvent = "data: " + data + "\n\n";
+            outputStream.write(sseEvent.getBytes(StandardCharsets.UTF_8));
+            outputStream.flush();
+        } catch (IOException e) {
+            throw new RuntimeException("Feil ved skriving av SSE-chunk: " + e.getMessage(), e);
+        }
     }
 }

@@ -68,6 +68,12 @@ public class EquipmentFacadeREST extends AbstractFacade<Equipment> {
 
         List<Measurement> measurements = new ArrayList<>(entity.getMeasurementList());
         if (existing == null) {
+            if(entity.getLocation() != null) {
+                Location existingLocation = LocationFacadeREST.getInstance().find(entity.getLocation().getLocationId());
+                if(existingLocation == null) {
+                    entity.setLocation(null);
+                }
+            }
             entity.setDeleted(false);
             setEquipmentType(entity);
             for (Equipment child : entity.getEquipmentList()) {
